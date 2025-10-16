@@ -37,6 +37,11 @@ if df is not None:
     # Filter out 2025 data (incomplete year) and data before 2009
     df = df[(df['fiscal_year'] >= 2009) & (df['fiscal_year'] < 2025)]
 
+    # Remove fuel types that have zero emissions across all years
+    fuel_totals = df.groupby('account_fuel')['mtco2e'].sum()
+    non_zero_fuels = fuel_totals[fuel_totals > 0].index.tolist()
+    df = df[df['account_fuel'].isin(non_zero_fuels)]
+
     # Get most recent fiscal year data (should be 2024 now)
     most_recent_year = df['fiscal_year'].max()
     current_year_data = df[df['fiscal_year'] == most_recent_year]
