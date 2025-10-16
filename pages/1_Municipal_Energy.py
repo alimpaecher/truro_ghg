@@ -34,8 +34,8 @@ if df is not None:
         df['usage_end_date'] = pd.to_datetime(df['usage_end'])
         df = df.sort_values('usage_end_date')
 
-    # Filter out 2025 data (incomplete year)
-    df = df[df['fiscal_year'] < 2025]
+    # Filter out 2025 data (incomplete year) and data before 2009
+    df = df[(df['fiscal_year'] >= 2009) & (df['fiscal_year'] < 2025)]
 
     # Get most recent fiscal year data (should be 2024 now)
     most_recent_year = df['fiscal_year'].max()

@@ -2,6 +2,13 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
+# Page configuration
+st.set_page_config(
+    page_title="Town of Truro GHG Dashboard",
+    page_icon="🌍",
+    layout="wide"
+)
+
 # Configuration
 SPREADSHEET_ID = "1sVrJGf34KkzQJ4jv2yrqNMp7j4ghZRlX7wt2Bxk-vz8"
 VEHICLES_SHEET_GID = "1586854144"
