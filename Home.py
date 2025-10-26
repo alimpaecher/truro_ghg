@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from data_loader import load_vehicle_data
+from data_loader import load_vehicle_data, load_energy_data
 
 # Page configuration
 st.set_page_config(
@@ -10,22 +10,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Configuration
-SPREADSHEET_ID = "1sVrJGf34KkzQJ4jv2yrqNMp7j4ghZRlX7wt2Bxk-vz8"
-ENERGY_SHEET_GID = "1784785583"
-
 st.title("Town of Truro GHG Emissions Dashboard")
-
-@st.cache_data(ttl=600)
-def load_energy_data():
-    """Load data from Municipal Energy sheet."""
-    try:
-        url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?format=csv&gid={ENERGY_SHEET_GID}"
-        df = pd.read_csv(url)
-        return df
-    except Exception as e:
-        st.error(f"Error loading energy data: {str(e)}")
-        return None
 
 # Load both datasets
 vehicles_df = load_vehicle_data()

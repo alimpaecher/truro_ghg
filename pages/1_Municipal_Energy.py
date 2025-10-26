@@ -1,27 +1,9 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-
-# Configuration
-SPREADSHEET_ID = "1sVrJGf34KkzQJ4jv2yrqNMp7j4ghZRlX7wt2Bxk-vz8"
-SHEET_GID = "1784785583"  # Municipal Energy sheet GID
+from data_loader import load_energy_data
 
 st.title("Municipal Energy Data")
-
-@st.cache_data(ttl=600)
-def load_energy_data():
-    """Load Municipal Energy data from publicly accessible Google Sheet."""
-    try:
-        # Construct the export URL for CSV format
-        url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?format=csv&gid={SHEET_GID}"
-
-        # Read the CSV directly into a DataFrame
-        df = pd.read_csv(url)
-        return df
-
-    except Exception as e:
-        st.error(f"Error loading data: {str(e)}")
-        return None
 
 # Load the data
 df = load_energy_data()

@@ -72,6 +72,19 @@ def load_vehicle_data():
         return None
 
 
+@st.cache_data(ttl=600)
+def load_energy_data():
+    """Load municipal energy data from local CSV file."""
+    try:
+        # Load the municipal energy data
+        energy_df = pd.read_csv('data/municipal_energy.csv')
+        return energy_df
+
+    except Exception as e:
+        st.error(f"Error loading energy data: {str(e)}")
+        return None
+
+
 # Keep backward compatibility
 @st.cache_data(ttl=600)
 def load_data():
