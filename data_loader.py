@@ -102,6 +102,45 @@ def load_clc_participation_data():
         return None
 
 
+@st.cache_data(ttl=600)
+def load_clc_census_data():
+    """Load CLC census data from local CSV file."""
+    try:
+        # Load the CLC census data, skip the empty rows at the end
+        clc_census_df = pd.read_csv('data/clc_census.csv', nrows=2)
+
+        # Clean numeric columns - remove commas and convert to integers
+        numeric_cols = clc_census_df.columns[clc_census_df.columns != 'City/Block group']
+        for col in numeric_cols:
+            if clc_census_df[col].dtype == 'object':
+                clc_census_df[col] = clc_census_df[col].str.replace(',', '').replace('', '0')
+                # Convert to numeric, coerce errors to NaN
+                clc_census_df[col] = pd.to_numeric(clc_census_df[col], errors='coerce')
+
+        return clc_census_df
+
+    except Exception as e:
+        st.error(f"Error loading CLC census data: {str(e)}")
+        return None
+
+
+@st.cache_data(ttl=600)
+def load_clc_heat_pump_data():
+    """Load CLC heat pump installation data from local CSV file."""
+    try:
+        # Load the heat pump installation data
+        heat_pump_df = pd.read_csv('data/clc_heat_pump_installation.csv')
+
+        # Rename the first column to 'Year' (it appears to be unnamed)
+        heat_pump_df.columns = ['Year', 'Installed Heat Pump', 'Installed Heat Pumps Location']
+
+        return heat_pump_df
+
+    except Exception as e:
+        st.error(f"Error loading CLC heat pump data: {str(e)}")
+        return None
+
+
 # Keep backward compatibility
 @st.cache_data(ttl=600)
 def load_data():

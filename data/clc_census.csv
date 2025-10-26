@@ -1,0 +1,12 @@
+City/Block group,Active electric accounts,Active gas accounts,Electric Service Territory Assignment,Gas Service Territory Assignment,Household income <25k,Household income 25k-50k,Household income 50k-75k,Household income 75k-100k,Household income >100k,Household income Total,Heating fuel Electricity,Heating fuel Utility gas,Heating fuel Delivered fuels,Heating fuel Other,Heating fuel Total,Units in structure 1 unit,Units in structure 2-4 units,Units in structure 5-19 units,Units in structure 20+ units,Units in structure Other,Units in structure Total,Tenure Owner-occupied,Tenure Renter-occupied,Tenure Total,"Vacancy status Seasonal, recreational, occasional",Vacancy status Other,Vacancy status Total,Household language English,Household language Spanish,Household language Other Indo-European,Household language Asian and Pacific Island,Household language Other languages,Household language Total,Households with Limited English Proficiency,Year built Before 1969,Year built 1970 - 1999,Year built 2000 and later,Year built Total,Environmental Justice Community (Block group designation),DPU Hard to Reach (Municipality designation),Gateway community (Municipality designation)
+Truro,"3,200",,Cape Light Compact,No gas service,150,267,35,79,522,"1,053",23,41,979,10,"1,053","3,162",25,41,17,80,"3,325",882,171,"1,053","2,232",40,"2,272","1,053",0,0,0,0,"1,053",0,"1,347","1,400",578,"3,325",N/A,No,No
+Total,"3,200",,Cape Light Compact,No gas service,150,267,35,79,522,"1,053",23,41,979,10,"1,053","3,162",25,41,17,80,"3,325",882,171,"1,053","2,232",40,"2,272","1,053",0,0,0,0,"1,053",0,"1,347","1,400",578,"3,325",,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+"Applied filters:
+Suppression option is ACS_GeoID, City
+City is Truro
+YEAR is 2023
+Suppression status is Suppression ON
+Option is *
+New_Construction_Rule is True
+Suppression_visible is False",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
