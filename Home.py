@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+from data_loader import load_vehicle_data
 
 # Page configuration
 st.set_page_config(
@@ -11,21 +12,9 @@ st.set_page_config(
 
 # Configuration
 SPREADSHEET_ID = "1sVrJGf34KkzQJ4jv2yrqNMp7j4ghZRlX7wt2Bxk-vz8"
-VEHICLES_SHEET_GID = "1586854144"
 ENERGY_SHEET_GID = "1784785583"
 
 st.title("Town of Truro GHG Emissions Dashboard")
-
-@st.cache_data(ttl=600)
-def load_vehicles_data():
-    """Load data from Vehicles sheet."""
-    try:
-        url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?format=csv&gid={VEHICLES_SHEET_GID}"
-        df = pd.read_csv(url)
-        return df
-    except Exception as e:
-        st.error(f"Error loading vehicles data: {str(e)}")
-        return None
 
 @st.cache_data(ttl=600)
 def load_energy_data():
@@ -39,7 +28,7 @@ def load_energy_data():
         return None
 
 # Load both datasets
-vehicles_df = load_vehicles_data()
+vehicles_df = load_vehicle_data()
 energy_df = load_energy_data()
 
 if vehicles_df is not None and energy_df is not None:
