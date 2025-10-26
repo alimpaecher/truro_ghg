@@ -85,6 +85,23 @@ def load_energy_data():
         return None
 
 
+@st.cache_data(ttl=600)
+def load_clc_participation_data():
+    """Load CLC participation data from local CSV file."""
+    try:
+        # Load the CLC participation data
+        clc_df = pd.read_csv('data/clc_participation.csv')
+
+        # Clean the percentage column - remove % sign and convert to float
+        clc_df['Cumulative Location Participation Rate %'] = clc_df['Cumulative Location Participation Rate %'].str.replace('%', '').astype(float)
+
+        return clc_df
+
+    except Exception as e:
+        st.error(f"Error loading CLC participation data: {str(e)}")
+        return None
+
+
 # Keep backward compatibility
 @st.cache_data(ttl=600)
 def load_data():
