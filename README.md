@@ -7,6 +7,7 @@ A Streamlit-based dashboard for visualizing greenhouse gas emissions data from t
 - **Combined Emissions Overview**: View total emissions from both municipal buildings and vehicles
 - **Municipal Energy Analysis**: Detailed breakdown of energy consumption by fuel type
 - **Vehicle Fleet Tracking**: Monitor emissions from the municipal vehicle fleet
+- **CLC Participation Tracking**: Cape Light Compact participation rates, census data, and heat pump installations
 - **Interactive Charts**: Visualize trends over time with Plotly
 - **Data Export**: Download processed data as CSV files
 
@@ -41,4 +42,37 @@ streamlit run Home.py
 ```
 
 3. The dashboard will automatically open in your default web browser at `http://localhost:8501`
+
+## Data Sources
+
+All data files are stored in the `data/` folder as CSV files.
+
+### Municipal Energy & Vehicles
+- `municipal_energy.csv`: Municipal building energy consumption data
+- `TruroVehicles.csv`: Vehicle fleet counts by quarter and type
+- `vehicles_factors.csv`: Vehicle emission calculation factors (MPG, miles/year, etc.)
+- `emission_factors.csv`: Emission factors for various fuel types
+
+### Cape Light Compact (CLC) Data
+
+**Data Source:** [Cape Light Compact Customer Profile Viewer](https://viewer.dnv.com/macustomerprofile/entity/1444/report/2078)
+
+Navigate to: **Residential: Electric and Gas Executive Summaries**
+
+**To download the data:**
+
+1. **CLC Participation Data** (`clc_participation.csv`):
+   - Click on "Municipality" tab
+   - Export participation rate data by year
+
+2. **Census Statistics** (`clc_census.csv`):
+   - Click on "Census Statistics" tab
+   - Export census data (currently 2023 data)
+   - Includes housing tenure, vacancy status, heating fuel types, etc.
+
+3. **Heat Pump Installation** (`clc_heat_pump_installation.csv`):
+   - Navigate to "Electrification and Heating" → "By Municipality"
+   - Export heat pump installation data by year
+
+Save all downloaded CSV files to the `data/` folder before running the dashboard.
 

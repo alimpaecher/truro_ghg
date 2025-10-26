@@ -5,6 +5,21 @@ from data_loader import load_clc_participation_data, load_clc_census_data, load_
 
 st.title("CLC Participation Data")
 
+# Data collection notes
+with st.expander("ℹ️ Data Collection Notes"):
+    st.markdown("""
+    **Data Source:** [Cape Light Compact Customer Profile Viewer](https://viewer.dnv.com/macustomerprofile/entity/1444/report/2078)
+
+    Navigate to: **Residential: Electric and Gas Executive Summaries**
+
+    **Data Collection Instructions:**
+    - **CLC Participation Data:** Click on "Municipality" tab
+    - **Census Statistics:** Click on "Census Statistics" tab (currently 2023 data)
+    - **Heat Pump Installation:** Navigate to "Electrification and Heating" → "By Municipality"
+
+    All data is downloaded as CSV files and stored in the `data/` folder.
+    """)
+
 # Load the data
 df = load_clc_participation_data()
 
