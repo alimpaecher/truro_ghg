@@ -1,0 +1,9 @@
+Fuel type or activity,,Unique identifier,,Type,GWP,Units,,,Convert to tonnes,Emission factor,,,,,,,,,,Data quality,Year,Scale,Description,Source
+,,,,,,,,,,CO2,tCO2e,CH4,CH4_tCO2e,N2O,N2O_tCO2e,Total CO2e,tCO2e,CO2(b),tCO2(b),,,,,
+EXAMPLE: Natural gas,,EXAMPLE: EF_Natural gas,,CO2e,5AR,kg,/,kWh,0.001,0.4822,0.0004822,0.003,0.000003,0.0029,0.000003,0.4881,0.000488,0.09644,0.00009644,H,2014,National,Emission factor for grid-supplied natural gas,National emissions factor database
+Municipal wastes (all),,EF_MSWtoEnergy,,GHG,5AR,kg,/,st,0.001,205.3952,2.05E-01,,,,,205.3952,0.205000,,,Please select,2019,National,"ef.com - Waste, No heat Recovery",Emission factors database @ emissionfactors.com
+Propane,,EF_Propane,,GHG,5AR,kg,/,gal (US),0.001,5.72,5.72E-03,0.0003,7.56E-06,0.0001,1.33E-05,5.74165,0.005740,,,Please select,2019,National,"ef.com - Fuel various, Propane",Emission factors database @ emissionfactors.com
+Diesel oil,,EF_HeatingOil,,GHG,5AR,kg,/,gal (US),0.001,10.1605,1.02E-02,0.0004,1.19E-05,0.0001,2.21E-05,10.19589784,0.010200,,,Please select,2019,National,"ef.com - Fuel, Distillate",Emission factors database @ emissionfactors.com
+Motor gasoline (petrol),,EF_Gasoline,,GHG,5AR,kg,/,gal (US),0.001,8.78,8.78E-03,0.0002,4.88E-06,0.0001,3.08E-05,8.818995669,0.008820,,,Please select,2019,National,"ef.com - Cars, Gasoline",Emission factors database @ emissionfactors.com
+Diesel oil,,EF_Diesel,,GHG,5AR,kg,/,gal (US),0.001,10.21,1.02E-02,0.0001,1.72E-06,0.0003,7.39E-05,10.29469557,0.010300,,,Please select,2019,National,"ef.com - Trucks, Diesel",Emission factors database @ emissionfactors.com
+Electricity,,EF_Electricity,,GHG,5AR,kg,/,MWh,0.001,236.9165,2.37E-01,0.0372,1.04E-03,0.005,1.32E-03,239.3332829,0.239000,,,Please select,2019,Regional,"ef.com - Electricity consumption, eGrid: NPCC New England",Emission factors database @ emissionfactors.com
