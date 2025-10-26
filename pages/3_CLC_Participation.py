@@ -111,7 +111,7 @@ if df is not None:
 
 # Load and display census data
 st.divider()
-st.header("Truro Census & Housing Data")
+st.header("Truro Census & Housing Data (2023)")
 
 census_df = load_clc_census_data()
 
@@ -191,6 +191,23 @@ if census_df is not None:
     st.write(f"**Total households:** {int(heating_total):,}")
     for fuel, count in heating_data.items():
         st.write(f"**{fuel}:** {int(count):,} ({count/heating_total*100:.1f}%)")
+
+    # Warning note about data discrepancies
+    st.warning("""
+    ⚠️ **Data Quality Questions:**
+
+    - **Electricity vs Heat Pumps**: Only {electric} households ({electric_pct:.1f}%) report electricity as their *primary* heating fuel,
+    yet {heat_pumps} heat pumps are installed (2023). Need to verify data export and/or contact Cape Light Compact to understand
+    how these numbers are defined and why there is such a large discrepancy.
+
+    - **Utility Gas**: {gas} households report "Utility gas" as their heating fuel, but Truro has no natural gas service.
+    Need to verify this data with Cape Light Compact to understand what this category represents.
+    """.format(
+        electric=int(heating_data['Electricity']),
+        electric_pct=heating_data['Electricity']/heating_total*100,
+        heat_pumps=324,  # From 2023 heat pump data
+        gas=int(heating_data['Utility Gas'])
+    ))
 
     # Key insight callout
     vacancy_total = seasonal_vacant + other_vacant
