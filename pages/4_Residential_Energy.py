@@ -154,8 +154,8 @@ if mass_save_data is not None and propane_data_tuple is not None:
     st.markdown("""
     ### Why Estimation is Necessary
 
-    Unlike electricity, there's no centralized reporting for propane (and oil) consumption in Truro.
-    Homes buy propane from various suppliers, and there's no municipal aggregation of this data.
+    Unlike electricity, there's no centralized reporting for oil and propane (fossil fuel) consumption in Truro.
+    Homes buy heating fuel from various suppliers, and there's no municipal aggregation of this data.
 
     Instead, we **estimate** heating fuel usage based on building characteristics from the Assessors Database.
     """)
@@ -184,78 +184,66 @@ if mass_save_data is not None and propane_data_tuple is not None:
             st.metric("Propane Heating", f"{propane_count:,}")
 
         # Show fuel type breakdown
-        st.markdown("**Heating Fuel Distribution:**")
-        fuel_counts = df_with_sqft['FUEL'].value_counts().reset_index()
-        fuel_counts.columns = ['Fuel Type', 'Number of Properties']
-        st.dataframe(fuel_counts, hide_index=True, use_container_width=True)
+        col1, col2 = st.columns(2)
 
-    st.subheader("Step 2: Estimate Fuel Consumption")
+        with col1:
+            st.markdown("**Heating Fuel Distribution:**")
+            fuel_counts = df_with_sqft['FUEL'].value_counts().reset_index()
+            fuel_counts.columns = ['Fuel Type', 'Number of Properties']
+            st.dataframe(fuel_counts, hide_index=True, use_container_width=True)
+
+        with col2:
+            st.markdown("**Heating System (HVAC) Distribution:**")
+            hvac_counts = df_with_sqft['HVAC'].value_counts().reset_index()
+            hvac_counts.columns = ['HVAC Type', 'Number of Properties']
+            st.dataframe(hvac_counts, hide_index=True, use_container_width=True)
+
+        st.info("""
+        💡 **Key Observation**: In 2019, the assessors database shows **92 properties with heat pumps**.
+        This becomes our baseline for tracking heat pump growth through CLC data (2021-2023).
+        """)
+
+    st.subheader("Step 2: Establishing Baseline Fossil Fuel Emissions")
 
     st.markdown("""
-    For each property, we estimate annual fuel consumption based on:
-    1. **Square footage** (larger homes use more fuel)
-    2. **Fuel consumption benchmarks** (gallons per square foot per year)
-    3. **Seasonal adjustment** (seasonal homes use less heating)
+    To track how fossil fuel heating changes over time, we establish a **2019 baseline** for propane heating specifically.
+
+    Why focus on propane? Heat pump conversions in Truro have primarily targeted propane heating systems, so we track
+    **year-round residential propane properties** as they convert to heat pumps (CLC-funded installations).
     """)
 
-    # Consumption benchmarks
-    consumption_benchmarks = pd.DataFrame({
-        'Fuel Type': ['Heating Oil', 'Propane', 'Electric Resistance', 'Heat Pumps'],
-        'Consumption Rate': ['0.40 gal/sq ft/year', '0.39 gal/sq ft/year', '~12 kWh/sq ft/year ⚠️', '~4 kWh/sq ft/year ⚠️'],
-        'Source': ['Mass.gov', 'Mass.gov', 'Estimate', 'Estimate (COP ~3.0)']
+    st.markdown("""
+    **Baseline Metrics (2019):**
+    """)
+
+    baseline_metrics = pd.DataFrame({
+        'Metric': [
+            'Year-Round Residential Propane Properties',
+            'Median Property Size',
+            'Total Baseline Propane Emissions'
+        ],
+        'Value': [
+            f"{propane_metadata['baseline_propane_properties']:,} properties",
+            f"{propane_metadata['median_sqft']:,.0f} sq ft",
+            f"{propane_metadata['baseline_propane_mtco2e']:,.1f} mtCO2e/year"
+        ],
+        'Notes': [
+            'From assessors database (excludes motels, commercial)',
+            'Used for heat pump displacement calculations',
+            'This is what we track reducing over time'
+        ]
     })
 
-    st.table(consumption_benchmarks)
-
-    st.warning("""
-    ⚠️ **Important**: Oil and propane benchmarks come from [Mass.gov](https://www.mass.gov/info-details/household-heating-costs),
-    but electric heating rates are rough estimates that should be validated with local energy assessors.
-    """)
-
-    st.subheader("Step 3: Seasonal Adjustment")
+    st.table(baseline_metrics)
 
     st.markdown("""
-    Truro has a high percentage of seasonal properties. These properties are either vacant or heated at minimal levels
-    during winter, so they use much less fuel than year-round homes.
+    The calculation uses:
+    - **Propane consumption benchmark**: 0.39 gallons per sq ft per year ([Mass.gov](https://www.mass.gov/info-details/household-heating-costs))
+    - **Propane emission factor**: 0.00574 tCO2e per gallon (from emission_factors.csv)
+    - **Year-round heating factor**: 100% (these are occupied homes, not seasonal)
 
-    Based on CLC census data:
-    """)
-
-    seasonal_breakdown = pd.DataFrame({
-        'Property Type': ['Seasonal/Vacant', 'Year-Round Occupied'],
-        '% of Residential': ['67.1%', '32.9%'],
-        'Heating Usage': ['30% of full heating', '100% of full heating'],
-        'Rationale': ['Heat at maintenance level or off', 'Full heating all winter']
-    })
-
-    st.table(seasonal_breakdown)
-
-    st.markdown("""
-    **Weighted Average for Residential Properties:**
-    - (67.1% × 30%) + (32.9% × 100%) = **53% of theoretical full-year heating**
-
-    This means our calculations assume the average residential property uses about half the fuel of a year-round occupied home.
-    """)
-
-    st.subheader("Step 4: Convert to Emissions")
-
-    st.markdown("""
-    Finally, we convert fuel consumption to emissions using emission factors from `emission_factors.csv`:
-    """)
-
-    fuel_emissions = pd.DataFrame({
-        'Fuel Type': ['Heating Oil', 'Propane', 'Electricity'],
-        'Emission Factor': ['0.01030 tCO2e/gal', '0.00574 tCO2e/gal', '0.000239 tCO2e/kWh'],
-        'Source': ['Diesel oil factor', 'Propane factor', 'NPCC New England grid']
-    })
-
-    st.table(fuel_emissions)
-
-    st.markdown("""
-    **Complete Calculation Example (Year-Round Propane Home):**
-    1. Property size: 2,000 sq ft
-    2. Consumption: 2,000 × 0.39 gal/sq ft × 1.00 (year-round) = 780 gallons/year
-    3. Emissions: 780 gal × 0.00574 tCO2e/gal = **4.5 mtCO2e/year**
+    **Note**: Oil heating (the other major fossil fuel in the data) is not included in the displacement tracking below,
+    as heat pump conversions have primarily targeted propane systems.
     """)
 
     st.divider()
@@ -323,31 +311,57 @@ if mass_save_data is not None and propane_data_tuple is not None:
     st.markdown("""
     ### Key Assumptions
 
-    We make several assumptions to estimate how much propane consumption has decreased:
+    We make several assumptions to estimate how much propane consumption has decreased.
+    Each assumption has a rationale, but could be wrong:
     """)
 
-    assumptions = pd.DataFrame({
-        'Assumption': [
-            'Heat pumps replace propane',
-            'CLC installations are year-round homes',
-            'Representative property size',
-            'Conversion timing'
-        ],
-        'What We Assume': [
-            'Heat pumps replaced propane systems (not oil or electric)',
-            'All CLC-funded installations are in year-round occupied homes',
-            f"Use median square footage: {propane_metadata['median_sqft']:,.0f} sq ft",
-            'Properties converted in the year they appear in CLC data'
-        ],
-        'Why This Matters': [
-            'Propane most common target for conversions in coastal MA',
-            'Year-round homes use 100% heating vs 30% for seasonal',
-            'Cannot know actual size of each converted property',
-            'Gives us year-by-year displacement estimates'
-        ]
-    })
+    # Assumption 1
+    st.markdown("**1. Heat Pumps Replace Propane Systems**")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("✅ **Our Assumption:**")
+        st.write("Heat pumps replaced propane heating (not oil or electric resistance)")
+        st.caption("*Justification: Propane most common conversion target in coastal MA; CLC program priorities*")
+    with col2:
+        st.markdown("⚠️ **Why We Might Be Wrong:**")
+        st.write("Some heat pumps may have replaced oil or electric resistance heating instead")
+        st.caption("*Impact: Would overestimate propane reduction*")
 
-    st.table(assumptions)
+    # Assumption 2
+    st.markdown("**2. Installations Are in Year-Round Homes**")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("✅ **Our Assumption:**")
+        st.write("All CLC-funded installations are in year-round occupied homes")
+        st.caption("*Justification: CLC incentives favor year-round homeowners; seasonal homes less likely to invest*")
+    with col2:
+        st.markdown("⚠️ **Why We Might Be Wrong:**")
+        st.write("Some installations could be in seasonal homes that got upgraded")
+        st.caption("*Impact: Would overestimate propane displacement per property (seasonal homes use less heating)*")
+
+    # Assumption 3
+    st.markdown(f"**3. Representative Property Size: {propane_metadata['median_sqft']:,.0f} sq ft**")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("✅ **Our Assumption:**")
+        st.write(f"Use median square footage ({propane_metadata['median_sqft']:,.0f} sq ft) for all conversions")
+        st.caption("*Justification: Median is middle value; best proxy when actual property data unavailable*")
+    with col2:
+        st.markdown("⚠️ **Why We Might Be Wrong:**")
+        st.write("Actual converted properties may be larger or smaller than median")
+        st.caption("*Impact: Would under/overestimate fuel savings depending on actual sizes*")
+
+    # Assumption 4
+    st.markdown("**4. Assessors Data Aligns with CLC Data**")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("✅ **Our Assumption:**")
+        st.write("2019 assessors database accurately represents the baseline; heat pump count (92) matches with 2021 CLC data (165)")
+        st.caption("*Justification: Assessors data is close in time to CLC baseline; linear interpolation for 2020 is reasonable*")
+    with col2:
+        st.markdown("⚠️ **Why We Might Be Wrong:**")
+        st.write("Property characteristics may have changed between 2019-2021; assessors data may have capture issues; transition period could have anomalies")
+        st.caption("*Impact: Baseline propane property count or characteristics could be off, affecting all subsequent calculations*")
 
     st.subheader("Propane Reduction Results")
 
@@ -446,45 +460,30 @@ if mass_save_data is not None and propane_data_tuple is not None:
     ### What Involves Assumptions & Estimates
     """)
 
-    limitations = pd.DataFrame({
-        'Area': [
-            'Propane Consumption',
-            'Electric Heating Rates',
-            'Seasonal Properties',
-            'Heat Pump Targets',
-            '2020 Heat Pump Count',
-            'Property Sizes',
-            'Net Emissions Impact'
-        ],
-        'Limitation': [
-            'No direct measurement available',
-            'kWh/sq ft estimates not validated locally',
-            'Cannot identify which specific properties are seasonal',
-            'Cannot verify each heat pump replaced propane specifically',
-            'Interpolated value (linear assumption)',
-            'Using median square footage, actual properties vary',
-            'Need to calculate increased electricity vs decreased propane'
-        ],
-        'How We Address It': [
-            'Use Mass.gov benchmarks (0.39 gal/sq ft)',
-            'Clearly mark as estimates needing validation',
-            'Apply statistical approach (67.1% seasonal × 30% factor)',
-            'Assume propane target based on MA coastal patterns',
-            'Reasonable given assessors (92) and 2021 CLC (165) data',
-            'Best available proxy for typical conversion',
-            'Could add in future with detailed heat pump usage analysis'
-        ]
-    })
+    st.markdown("""
+    **1. Propane Consumption Baseline**
+    - **Limitation**: No direct measurement of propane usage available
+    - **How we address it**: Use Mass.gov benchmark (0.39 gal/sq ft) for propane consumption estimates
 
-    st.dataframe(limitations, hide_index=True, use_container_width=True)
+    **2. Heat Pump Replacement Targets**
+    - **Limitation**: Cannot verify each heat pump replaced propane specifically (vs oil or electric)
+    - **How we address it**: Assume propane target based on MA coastal conversion patterns and CLC program priorities
+
+    **3. 2020 Heat Pump Count**
+    - **Limitation**: Interpolated value between 2019 assessors (92) and 2021 CLC (165)
+    - **How we address it**: Linear interpolation is reasonable given close timeframe and steady growth pattern
+
+    **4. Property Sizes**
+    - **Limitation**: Using median square footage; actual converted properties vary
+    - **How we address it**: Median is best available proxy when actual property-level conversion data unavailable
+    """)
 
     st.info("""
     💡 **Future Improvements:**
-    - Validate electric heating benchmarks with Mass Save actual usage data
-    - Refine seasonal property identification (tax records, utility connection data)
-    - Calculate net emissions change (propane savings vs electricity increase)
-    - Update with newer assessors data when available
+    - Update with newer assessors data when available (though CLC tracking is reliable for actual heat pump installations)
+    - Cross-reference CLC installations with assessors data to verify fuel types being replaced
     - Track oil heating displacement separately from propane
+    - Obtain actual propane delivery data if suppliers are willing to share aggregated information
     """)
 
 else:
