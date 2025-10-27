@@ -464,6 +464,7 @@ if mass_save_data is not None and fossil_fuel_tuple is not None and propane_data
     📊 **Bottom Line (2023)**:
     - **{int(latest_year_data['cumulative_conversions'])} properties** have converted from propane to heat pumps since 2019
     - **{latest_year_data['propane_mtco2e_eliminated']:.1f} mtCO2e** in propane emissions eliminated annually
+    - **Average per heat pump: {fossil_fuel_metadata['propane_per_property_mtco2e_yearround']:.2f} mtCO2e/property/year** eliminated
     - **Total fossil fuel heating: {latest_year_data['total_fossil_fuel_mtco2e']:,.1f} mtCO2e** (down from {baseline_2019:,.1f} mtCO2e in 2019)
     - This represents a **{((baseline_2019 - latest_year_data['total_fossil_fuel_mtco2e']) / baseline_2019 * 100):.1f}% reduction** in total fossil fuel heating emissions
     """)
