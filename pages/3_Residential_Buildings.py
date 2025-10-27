@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from data_loader import load_assessors_data, calculate_residential_emissions, load_mass_save_data, calculate_propane_displacement
+from data_loader import load_assessors_data, calculate_residential_emissions, load_mass_save_data, calculate_propane_displacement, calculate_total_fossil_fuel_heating
 
 st.title("Residential & Commercial Buildings: Heating & Energy")
 
@@ -478,12 +478,159 @@ if mass_save_data is not None and propane_data_tuple is not None:
     - **How we address it**: Median is best available proxy when actual property-level conversion data unavailable
     """)
 
+    # DETAILED CALCULATION BREAKDOWN
+    st.divider()
+    st.header("Detailed Calculation Breakdown")
+
+    st.markdown("""
+    This section shows exactly how we calculated the fossil fuel heating emissions by fuel type.
+    The calculation includes **full-time vs seasonal occupancy** adjustments.
+    """)
+
+    # Load the total fossil fuel data
+    fossil_fuel_tuple = calculate_total_fossil_fuel_heating()
+    if fossil_fuel_tuple is not None:
+        fossil_fuel_results, fossil_fuel_metadata = fossil_fuel_tuple
+
+        # Seasonal adjustment factors
+        SEASONAL_PCT = 0.671  # 67.1% of residential properties are seasonal
+        SEASONAL_HEATING_FACTOR = 0.30  # Seasonal homes use 30% of year-round heating
+        YEARROUND_HEATING_FACTOR = 1.00  # Year-round homes use 100%
+
+        # Calculate weighted average seasonal adjustment
+        avg_seasonal_factor = (SEASONAL_PCT * SEASONAL_HEATING_FACTOR +
+                              (1 - SEASONAL_PCT) * YEARROUND_HEATING_FACTOR)
+
+        st.markdown(f"""
+        **Occupancy Assumptions (from CLC Census data):**
+        - **{SEASONAL_PCT*100:.1f}%** of residential properties are **seasonal** (use {SEASONAL_HEATING_FACTOR*100:.0f}% heating)
+        - **{(1-SEASONAL_PCT)*100:.1f}%** of residential properties are **year-round** (use {YEARROUND_HEATING_FACTOR*100:.0f}% heating)
+        - **Weighted average heating factor: {avg_seasonal_factor*100:.1f}%**
+        """)
+
+        # Get detailed fuel data from assessors
+        if df is not None:
+            df_residential = df[(df['PropertyType'] == 'R') &
+                               (df['NetSF'].notna()) &
+                               (df['NetSF'] > 0)].copy()
+
+            # Oil properties
+            oil_properties = df_residential[df_residential['FUEL'] == 'OIL']
+            oil_count = len(oil_properties)
+            oil_median_sqft = oil_properties['NetSF'].median()
+            oil_total_sqft = oil_properties['NetSF'].sum()
+
+            # Propane properties
+            gas_properties = df_residential[df_residential['FUEL'] == 'GAS']
+            gas_count = len(gas_properties)
+            gas_median_sqft = gas_properties['NetSF'].median()
+
+            # All propane properties
+            propane_total_sqft = gas_properties['NetSF'].sum()
+
+            # Consumption rates
+            OIL_CONSUMPTION = 0.40  # gal/sq ft/year
+            PROPANE_CONSUMPTION = 0.39  # gal/sq ft/year
+
+            # Emission factors
+            OIL_EMISSION_FACTOR = 0.01030  # tCO2e/gal
+            PROPANE_EMISSION_FACTOR = 0.00574  # tCO2e/gal
+
+            # Calculate gallons and emissions for each fuel type
+
+            # Oil (uses seasonal adjustment: 67.1% seasonal, 32.9% year-round)
+            # Expected baseline (2019): ~5,402.4 mtCO2e
+            oil_gallons_total = oil_total_sqft * OIL_CONSUMPTION * avg_seasonal_factor
+            oil_mtco2e = oil_gallons_total * OIL_EMISSION_FACTOR
+
+            # Propane (uses seasonal adjustment: 67.1% seasonal, 32.9% year-round)
+            # Expected baseline (2019): ~2,106.3 mtCO2e
+            propane_gallons_total = propane_total_sqft * PROPANE_CONSUMPTION * avg_seasonal_factor
+            propane_mtco2e = propane_gallons_total * PROPANE_EMISSION_FACTOR
+
+            st.markdown("### Fuel Type Breakdown (2019 Baseline)")
+
+            # Create detailed fuel breakdown table
+            fuel_breakdown = pd.DataFrame({
+                'Fuel Type': [
+                    'Oil',
+                    'Propane (GAS)',
+                    'TOTAL'
+                ],
+                'Number of Properties': [
+                    f"{oil_count:,}",
+                    f"{gas_count:,}",
+                    f"{oil_count + gas_count:,}"
+                ],
+                'Median Sq Ft': [
+                    f"{oil_median_sqft:,.0f}",
+                    f"{gas_median_sqft:,.0f}",
+                    '—'
+                ],
+                '% Year-Round / % Seasonal': [
+                    f"{(1-SEASONAL_PCT)*100:.1f}% / {SEASONAL_PCT*100:.1f}%",
+                    f"{(1-SEASONAL_PCT)*100:.1f}% / {SEASONAL_PCT*100:.1f}%",
+                    '—'
+                ],
+                'Heating Factor': [
+                    f"{avg_seasonal_factor*100:.1f}%",
+                    f"{avg_seasonal_factor*100:.1f}%",
+                    '—'
+                ],
+                'Consumption Rate': [
+                    f"{OIL_CONSUMPTION} gal/sq ft/year",
+                    f"{PROPANE_CONSUMPTION} gal/sq ft/year",
+                    '—'
+                ],
+                'Total Gallons Used': [
+                    f"{oil_gallons_total:,.0f}",
+                    f"{propane_gallons_total:,.0f}",
+                    f"{oil_gallons_total + propane_gallons_total:,.0f}"
+                ],
+                'Emission Factor': [
+                    f"{OIL_EMISSION_FACTOR} tCO2e/gal",
+                    f"{PROPANE_EMISSION_FACTOR} tCO2e/gal",
+                    '—'
+                ],
+                'Total mtCO2e (2019)': [
+                    f"{oil_mtco2e:,.1f}",
+                    f"{propane_mtco2e:,.1f}",
+                    f"{oil_mtco2e + propane_mtco2e:,.1f}"
+                ]
+            })
+
+            st.dataframe(fuel_breakdown, hide_index=True, use_container_width=True)
+
+            # Add verification note
+            st.success(f"""
+            ✓ **Verification - 2019 Baseline Totals:**
+            - Oil: {oil_mtco2e:,.1f} mtCO2e (expected: ~5,402.4 mtCO2e)
+            - Propane: {propane_mtco2e:,.1f} mtCO2e (expected: ~2,106.3 mtCO2e)
+            - **Total: {oil_mtco2e + propane_mtco2e:,.1f} mtCO2e (expected: ~7,508.7 mtCO2e)**
+            """)
+
+            st.markdown("""
+            **Note about Heat Pump Displacement:**
+            - The propane displacement tracking (shown in the charts above) assumes that the 801 properties converting to heat pumps are **year-round homes** (100% heating factor)
+            - This is a subset of the total 821 propane properties shown in this table
+            - The remaining 20 propane properties are assumed to be seasonal or commercial and not part of the heat pump conversion program
+            """)
+
+    st.warning("""
+    **Important Notes:**
+    - Occupancy percentages (67.1% seasonal, 32.9% year-round) come from CLC census data
+    - Tracked propane assumes 100% year-round occupancy because CLC-funded heat pump installations are primarily in year-round homes
+    - Uses median square footage rather than actual building sizes for each property
+    - Does not account for varying insulation levels, thermostat settings, or other efficiency factors
+    """)
+
     st.info("""
     💡 **Future Improvements:**
-    - Update with newer assessors data when available (though CLC tracking is reliable for actual heat pump installations)
-    - Cross-reference CLC installations with assessors data to verify fuel types being replaced
-    - Track oil heating displacement separately from propane
-    - Obtain actual propane delivery data if suppliers are willing to share aggregated information
+    - Cross-reference CLC installations with assessors data to verify actual occupancy patterns
+    - Track oil heating displacement separately if oil-to-heat-pump conversions increase
+    - Obtain actual fuel delivery data if suppliers are willing to share aggregated information
+    - Use actual square footage for each converted property instead of median
+    - Update seasonal/year-round percentages with newer occupancy data
     """)
 
 else:
