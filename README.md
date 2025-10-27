@@ -76,3 +76,17 @@ Navigate to: **Residential: Electric and Gas Executive Summaries**
 
 Save all downloaded CSV files to the `data/` folder before running the dashboard.
 
+### Residential & Commercial Energy Data
+
+**Assessors Data Source:** Truro Assessors Database (property characteristics, HVAC types, fuel types, square footage)
+
+**Additional Energy Usage Data:**
+- [Mass Save Data - Geographic Savings by Town](https://www.masssavedata.com/Public/GeographicSavings)
+- This website provides actual energy consumption data by municipality in Massachusetts
+- Can be used to validate or refine the heating consumption benchmarks used in emissions calculations
+- Includes electricity and natural gas usage (note: Truro has no natural gas service)
+
+### Assessors Database
+- `TRURO_Assessors original_2020-12-17-2019.xls`: Property data including HVAC systems, fuel types, and square footage
+- Used to estimate residential and commercial heating emissions
+
