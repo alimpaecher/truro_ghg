@@ -49,7 +49,9 @@ All data files are stored in the `data/` folder as CSV files.
 
 ### Municipal Energy & Vehicles
 - `municipal_energy.csv`: Municipal building energy consumption data
-- `TruroVehicles.csv`: Vehicle fleet counts by quarter and type
+- `TruroVehicles.csv`: Vehicle census data by quarter and type
+  - Source: [MassDOT Vehicle Census](https://geodot-massdot.hub.arcgis.com/pages/vehicle-census)
+  - Contains registered vehicle counts by municipality
 - `vehicles_factors.csv`: Vehicle emission calculation factors (MPG, miles/year, etc.)
 - `emission_factors.csv`: Emission factors for various fuel types
 

@@ -114,3 +114,52 @@ if df is not None:
     else:
         st.warning("Please select at least one vehicle type to display the emissions chart.")
 
+    # Add methodology section
+    st.markdown("---")
+    st.subheader("Methodology: How Vehicle Emissions Are Calculated")
+
+    st.markdown("""
+    Vehicle emissions are calculated using a straightforward approach that combines vehicle counts with estimated annual fuel consumption and EPA emission factors.
+
+    ### Calculation Steps:
+
+    **1. Vehicle Count Data**
+    - Vehicle registration data by type (Passenger, Light Commercial, Motorcycle, Diesel, etc.) is tracked quarterly
+    - Source: [MassDOT Vehicle Census](https://geodot-massdot.hub.arcgis.com/pages/vehicle-census)
+    - Contains registered vehicle counts by municipality across Massachusetts
+
+    **2. Annual Mileage & Fuel Efficiency**
+    - Each vehicle type is assigned typical values for:
+        - **Miles per year**: Average annual mileage (e.g., 12,000 miles for passenger vehicles)
+        - **MPG (Miles per gallon)**: Fuel efficiency for gasoline/diesel vehicles
+        - **MPkWh (Miles per kilowatt-hour)**: Energy efficiency for electric vehicles
+    - Based on typical values for each vehicle type
+
+    **3. Fuel/Energy Consumption Calculation**
+    - For gasoline/diesel vehicles: `Gallons used = Miles per year ÷ MPG`
+    - For electric vehicles: `kWh used = Miles per year ÷ MPkWh`
+
+    **4. Emission Factors**
+    - **Gasoline**: 0.00882 tCO2e per gallon
+    - **Diesel**: 0.01030 tCO2e per gallon
+    - **Electricity**: 0.000239 tCO2e per kWh (based on regional grid mix)
+    - Source: EPA emission factors
+
+    **5. Total Emissions Per Vehicle**
+    - `tCO2e per vehicle = (Gallons used × Emission factor) + (kWh used × Emission factor)`
+
+    **6. Total Fleet Emissions**
+    - `Total tCO2e = Number of vehicles × tCO2e per vehicle` for each vehicle type
+    - Sum across all vehicle types to get total quarterly emissions
+
+    ### Important Notes:
+    - **This is an estimate** based on typical driving patterns and fuel efficiency
+    - Actual emissions may vary based on:
+        - Individual driving behavior and mileage
+        - Actual vehicle fuel efficiency (older vs. newer vehicles)
+        - Seasonal usage patterns (Truro has many seasonal residents)
+        - Electric vehicle adoption (reduces emissions per vehicle)
+    - The electricity emission factor reflects the current Massachusetts grid mix, which includes renewable and fossil fuel sources
+    - Vehicle count data represents registered vehicles in Truro, not necessarily all active vehicles
+    """)
+
