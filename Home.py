@@ -38,12 +38,21 @@ if vehicles_df is not None and energy_df is not None:
     # Filter out incomplete 2025 data
     energy_df = energy_df[energy_df['fiscal_year'] < 2025]
 
-    # Sum mtCO2e by year for municipal buildings (assuming fiscal_year represents the calendar year)
+    # Separate electric from other fuels
+    energy_electric = energy_df[energy_df['account_fuel'] == 'Electric'].groupby('fiscal_year')['mtco2e'].sum().reset_index()
+    energy_electric.columns = ['year', 'electric_mtco2e']
+
+    energy_other = energy_df[energy_df['account_fuel'] != 'Electric'].groupby('fiscal_year')['mtco2e'].sum().reset_index()
+    energy_other.columns = ['year', 'other_fuels_mtco2e']
+
+    # Sum mtCO2e by year for total municipal buildings
     energy_yearly = energy_df.groupby('fiscal_year')['mtco2e'].sum().reset_index()
     energy_yearly.columns = ['year', 'municipal_buildings_mtco2e']
 
-    # Merge the two datasets on year
+    # Merge all datasets on year
     combined_df = pd.merge(vehicles_yearly, energy_yearly, on='year', how='outer')
+    combined_df = pd.merge(combined_df, energy_electric, on='year', how='left')
+    combined_df = pd.merge(combined_df, energy_other, on='year', how='left')
     combined_df = combined_df.sort_values('year')
     combined_df = combined_df.fillna(0)
 
@@ -88,39 +97,65 @@ if vehicles_df is not None and energy_df is not None:
     # Create combined emissions chart
     st.subheader("Total Emissions Over Time")
 
-    fig = go.Figure()
-
-    fig.add_trace(go.Scatter(
-        x=combined_df['year'],
-        y=combined_df['municipal_buildings_mtco2e'],
-        name='Municipal Buildings',
-        mode='lines',
-        stackgroup='one',
-        fillcolor='rgba(255, 127, 80, 0.5)'
-    ))
-
-    fig.add_trace(go.Scatter(
-        x=combined_df['year'],
-        y=combined_df['vehicles_tco2e'],
-        name='Vehicles',
-        mode='lines',
-        stackgroup='one',
-        fillcolor='rgba(70, 130, 180, 0.5)'
-    ))
-
-    fig.update_layout(
-        xaxis_title="Year",
-        yaxis_title="tCO2e / mtCO2e",
-        hovermode='x unified',
-        height=500
+    # Add filters for the chart
+    all_categories = ['Municipal Buildings (Other Fuels)', 'Municipal Buildings (Electric)', 'Vehicles']
+    selected_categories = st.multiselect(
+        "Select categories to display:",
+        options=all_categories,
+        default=all_categories
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    if selected_categories:
+        fig = go.Figure()
+
+        # Municipal Buildings - Other Fuels (Oil, Propane, etc.)
+        if 'Municipal Buildings (Other Fuels)' in selected_categories:
+            fig.add_trace(go.Scatter(
+                x=combined_df['year'],
+                y=combined_df['other_fuels_mtco2e'],
+                name='Municipal Buildings (Other Fuels)',
+                mode='lines',
+                stackgroup='one',
+                fillcolor='rgba(255, 127, 80, 0.5)'
+            ))
+
+        # Municipal Buildings - Electric
+        if 'Municipal Buildings (Electric)' in selected_categories:
+            fig.add_trace(go.Scatter(
+                x=combined_df['year'],
+                y=combined_df['electric_mtco2e'],
+                name='Municipal Buildings (Electric)',
+                mode='lines',
+                stackgroup='one',
+                fillcolor='rgba(106, 168, 79, 0.5)'
+            ))
+
+        # Vehicles
+        if 'Vehicles' in selected_categories:
+            fig.add_trace(go.Scatter(
+                x=combined_df['year'],
+                y=combined_df['vehicles_tco2e'],
+                name='Vehicles',
+                mode='lines',
+                stackgroup='one',
+                fillcolor='rgba(70, 130, 180, 0.5)'
+            ))
+
+        fig.update_layout(
+            xaxis_title="Year",
+            yaxis_title="tCO2e / mtCO2e",
+            hovermode='x unified',
+            height=500
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("Please select at least one category to display the chart.")
 
     # Show breakdown table
     st.subheader("Emissions Breakdown by Year")
-    display_df = combined_df[['year', 'vehicles_tco2e', 'municipal_buildings_mtco2e', 'total_tco2e']].copy()
-    display_df.columns = ['Year', 'Vehicles (tCO2e)', 'Municipal Buildings (mtCO2e)', 'Total (tCO2e)']
+    display_df = combined_df[['year', 'vehicles_tco2e', 'electric_mtco2e', 'other_fuels_mtco2e', 'municipal_buildings_mtco2e', 'total_tco2e']].copy()
+    display_df.columns = ['Year', 'Vehicles (tCO2e)', 'Buildings - Electric (mtCO2e)', 'Buildings - Other Fuels (mtCO2e)', 'Buildings Total (mtCO2e)', 'Total (tCO2e)']
     st.dataframe(display_df.sort_values('Year', ascending=False), hide_index=True)
 
     # Download option
