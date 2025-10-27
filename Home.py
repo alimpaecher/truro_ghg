@@ -405,24 +405,36 @@ if vehicles_df is not None and energy_df is not None and mass_save_data is not N
     # Simplified narrative
     col_a, col_b = st.columns(2)
 
+    # Calculate percentages for narrative
+    heating_pct = abs((residential_heating_change / data_2019['residential_fossil_fuel_mtco2e']) * 100)
+    electric_pct = (residential_electric_change / data_2019['residential_electric_mtco2e']) * 100
+    net_residential = residential_heating_change + residential_electric_change
+
+    # Get number of conversions from fossil fuel data
+    conversions_2023 = fossil_fuel_results[fossil_fuel_results['year'] == 2023]['cumulative_conversions'].iloc[0]
+
     with col_a:
         st.markdown("### ✅ Progress: Heat Pump Adoption")
         st.markdown(f"""
-        **Residential fossil fuel heating dropped 25.5%** (-926 mtCO2e), reflecting the conversion of **204 properties** to heat pumps through the Cape Light Compact program.
+        **Residential fossil fuel heating dropped {heating_pct:.1f}%** ({residential_heating_change:.0f} mtCO2e), reflecting the conversion of **{int(conversions_2023)} properties** to heat pumps through the Cape Light Compact program.
 
-        **Residential electricity increased 21%** (+833 mtCO2e). The largest jump occurred in 2019-2020, which seems unlikely to be primarily from heat pump adoption given the gradual conversion timeline. This may reflect increased full-time occupancy during COVID, though this is unclear.
+        **Residential electricity increased {electric_pct:.1f}%** ({residential_electric_change:+.0f} mtCO2e). The largest jump occurred in 2019-2020, which seems unlikely to be primarily from heat pump adoption given the gradual conversion timeline. This may reflect increased full-time occupancy during COVID, though this is unclear.
 
-        **Net residential benefit: -93 mtCO2e**
+        **Net residential benefit: {net_residential:.0f} mtCO2e**
         """)
+
+    # Calculate vehicle and total percentages for narrative
+    vehicle_pct = (vehicles_change / data_2019['vehicles_tco2e']) * 100
+    total_pct = (total_change / data_2019['total_tco2e']) * 100
 
     with col_b:
         st.markdown("### ⚠️ Challenge: Vehicle Emissions")
         st.markdown(f"""
-        **Vehicle emissions increased 16.5%** (+22 tCO2e). This reflects more vehicles on the road, without sufficient adoption of electric vehicles.
+        **Vehicle emissions increased {vehicle_pct:.1f}%** ({vehicles_change:+.0f} tCO2e). This reflects more vehicles on the road, without sufficient adoption of electric vehicles.
 
         **Municipal buildings and commercial electricity remained relatively steady**, with minor reductions.
 
-        **Overall: -181 mtCO2e (1.8% reduction) from 2019 to 2023**
+        **Overall: {total_change:.0f} mtCO2e ({total_pct:.1f}% reduction) from 2019 to 2023**
         """)
 
     # Show breakdown by sector
