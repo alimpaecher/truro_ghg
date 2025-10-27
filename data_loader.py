@@ -285,6 +285,149 @@ def calculate_residential_emissions(df):
     return df_calc
 
 
+def calculate_propane_displacement():
+    """
+    Calculate propane displacement by heat pumps from 2021-2023.
+
+    Uses:
+    - Assessors data (2019) for baseline propane usage
+    - CLC heat pump installation data for conversion tracking
+
+    Assumptions:
+    - Heat pumps replaced propane heating systems
+    - CLC-funded installations are year-round homes (100% heating factor)
+    - Uses median square footage of residential propane properties
+    """
+
+    # Load assessors and heat pump data
+    assessors_df = load_assessors_data()
+    heat_pump_df = load_clc_heat_pump_data()
+
+    if assessors_df is None or heat_pump_df is None:
+        return None
+
+    # Filter to year-round residential propane properties
+    # Exclude motels, resorts, commercial
+    MOTELS_RESORTS = ['MOTELS', 'RESORT CONDO', 'INNS']
+    COMMERCIAL_TYPES = ['RESTAURANTS', 'SMALL RETAIL', 'GEN OFFICE BLDG', 'WAREHOUSE',
+                        'BANK BLDG', 'SERVICE STATION', 'FUEL SERVICE', 'MARINAS',
+                        'CAMPING FAC', 'MULTI-USE COM']
+
+    propane_residential = assessors_df[
+        (assessors_df['PropertyType'] == 'R') &
+        (assessors_df['FUEL'] == 'GAS') &
+        (assessors_df['NetSF'].notna()) &
+        (assessors_df['NetSF'] > 0) &
+        (~assessors_df['StateClassDesc'].isin(MOTELS_RESORTS)) &
+        (~assessors_df['StateClassDesc'].isin(COMMERCIAL_TYPES))
+    ].copy()
+
+    # Calculate median square footage
+    median_sqft = propane_residential['NetSF'].median()
+    total_propane_properties = len(propane_residential)
+
+    # Baseline propane consumption per property (year-round, 100% heating)
+    PROPANE_CONSUMPTION = 0.39  # gal/sq ft/year
+    PROPANE_EMISSION_FACTOR = 0.00574  # tCO2e per gallon
+
+    propane_per_property_gal = median_sqft * PROPANE_CONSUMPTION * 1.00  # year-round
+    propane_per_property_mtco2e = propane_per_property_gal * PROPANE_EMISSION_FACTOR
+
+    # Total baseline propane usage (2019)
+    baseline_propane_gal = total_propane_properties * propane_per_property_gal
+    baseline_propane_mtco2e = total_propane_properties * propane_per_property_mtco2e
+
+    # Heat pump conversion tracking
+    # Baseline from assessors database: 92 heat pump properties in 2019
+    baseline_heat_pumps_2019 = len(assessors_df[assessors_df['HVAC'].str.contains('HEAT PUMP', case=False, na=False)])
+
+    heat_pump_df_sorted = heat_pump_df.sort_values('Year')
+
+    # Get first CLC data point (2021: 165 locations)
+    first_clc_year = int(heat_pump_df_sorted.iloc[0]['Year'])
+    first_clc_locations = int(heat_pump_df_sorted.iloc[0]['Installed Heat Pumps Location'])
+
+    # Interpolate 2020 value assuming linear growth from 2019 to 2021
+    # 2019: 92, 2021: 165 → 2020: (92 + 165) / 2 ≈ 128.5 → 129
+    interpolated_2020_locations = int((baseline_heat_pumps_2019 + first_clc_locations) / 2)
+
+    # Calculate year-by-year
+    results = []
+
+    # Add 2019 baseline (assessors data)
+    results.append({
+        'Year': 2019,
+        'Heat_Pump_Locations': baseline_heat_pumps_2019,
+        'Cumulative_Conversions': 0,
+        'Remaining_Propane_Properties': total_propane_properties,
+        'Remaining_Propane_Gal': baseline_propane_gal,
+        'Remaining_Propane_mtCO2e': baseline_propane_mtco2e,
+        'Propane_Saved_Gal': 0,
+        'Propane_Saved_mtCO2e': 0,
+        'Percent_Reduction': 0
+    })
+
+    # Add 2020 interpolated
+    conversions_2020 = interpolated_2020_locations - baseline_heat_pumps_2019
+    results.append({
+        'Year': 2020,
+        'Heat_Pump_Locations': interpolated_2020_locations,
+        'Cumulative_Conversions': conversions_2020,
+        'Remaining_Propane_Properties': total_propane_properties - conversions_2020,
+        'Remaining_Propane_Gal': (total_propane_properties - conversions_2020) * propane_per_property_gal,
+        'Remaining_Propane_mtCO2e': (total_propane_properties - conversions_2020) * propane_per_property_mtco2e,
+        'Propane_Saved_Gal': conversions_2020 * propane_per_property_gal,
+        'Propane_Saved_mtCO2e': conversions_2020 * propane_per_property_mtco2e,
+        'Percent_Reduction': (conversions_2020 / total_propane_properties * 100)
+    })
+
+    # Add CLC data (2021-2023)
+    for idx, row in heat_pump_df_sorted.iterrows():
+        year = int(row['Year'])
+        locations = int(row['Installed Heat Pumps Location'])
+
+        # Calculate cumulative conversions from 2019 assessors baseline (92 heat pumps)
+        conversions = locations - baseline_heat_pumps_2019
+
+        # Calculate reduced propane usage
+        remaining_propane_properties = total_propane_properties - conversions
+        remaining_propane_gal = remaining_propane_properties * propane_per_property_gal
+        remaining_propane_mtco2e = remaining_propane_properties * propane_per_property_mtco2e
+
+        # Calculate savings
+        propane_saved_gal = conversions * propane_per_property_gal
+        propane_saved_mtco2e = conversions * propane_per_property_mtco2e
+
+        results.append({
+            'Year': year,
+            'Heat_Pump_Locations': locations,
+            'Cumulative_Conversions': conversions,
+            'Remaining_Propane_Properties': remaining_propane_properties,
+            'Remaining_Propane_Gal': remaining_propane_gal,
+            'Remaining_Propane_mtCO2e': remaining_propane_mtco2e,
+            'Propane_Saved_Gal': propane_saved_gal,
+            'Propane_Saved_mtCO2e': propane_saved_mtco2e,
+            'Percent_Reduction': (conversions / total_propane_properties * 100) if conversions > 0 else 0
+        })
+
+    results_df = pd.DataFrame(results)
+
+    # Add metadata
+    metadata = {
+        'baseline_year': 2019,
+        'baseline_heat_pumps': baseline_heat_pumps_2019,
+        'baseline_propane_properties': total_propane_properties,
+        'baseline_propane_gal': baseline_propane_gal,
+        'baseline_propane_mtco2e': baseline_propane_mtco2e,
+        'median_sqft': median_sqft,
+        'propane_per_property_gal': propane_per_property_gal,
+        'propane_per_property_mtco2e': propane_per_property_mtco2e,
+        'interpolated_2020': interpolated_2020_locations
+    }
+
+    return results_df, metadata
+
+
 # Keep backward compatibility
 @st.cache_data(ttl=600)
 def load_data():
