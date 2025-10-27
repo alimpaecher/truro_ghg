@@ -5,15 +5,28 @@ from data_loader import load_assessors_data, calculate_residential_emissions, lo
 
 st.title("Truro Residential & Commercial Energy")
 
-# OVERVIEW CHART: Energy Trends 2019-2023
-st.header("Energy Trends Overview (2019-2023)")
+st.markdown("""
+This page explains how we track energy use and emissions from residential and commercial buildings in Truro,
+combining multiple data sources to tell the story of the town's energy transition from 2019 to 2023.
+""")
 
 # Load all data sources
 mass_save_data = load_mass_save_data()
 propane_data_tuple = calculate_propane_displacement()
+df = load_assessors_data()
 
 if mass_save_data is not None and propane_data_tuple is not None:
     propane_results, propane_metadata = propane_data_tuple
+
+    # SECTION 1: OVERVIEW
+    st.header("1. Energy Trends Overview (2019-2023)")
+
+    st.markdown("""
+    This chart shows the big picture: how Truro's building energy use has changed over five years.
+    We track two types of energy:
+    - **Fossil Fuel Heating (orange line)**: Propane emissions from home heating
+    - **Electricity (green and blue lines)**: Power consumption in residential and commercial buildings
+    """)
 
     # Prepare data for the combined chart
     residential_electric = mass_save_data[mass_save_data['Sector'] == 'Residential & Low-Income'].sort_values('Year')
@@ -85,697 +98,394 @@ if mass_save_data is not None and propane_data_tuple is not None:
 
     st.plotly_chart(fig_overview, use_container_width=True)
 
-    st.info("""
-    📊 **Reading this chart:**
-    - **Fossil Fuel Heating (Propane)**: Shows declining propane emissions as properties convert to heat pumps (left y-axis, mtCO2e)
-    - **Residential Energy Use**: Electricity consumption in residential properties, includes heat pumps (right y-axis, MWh)
-    - **Commercial Energy Use**: Electricity consumption in commercial properties (right y-axis, MWh)
-
-    Note: The 2020 propane value is interpolated. Electricity data from Mass Save; propane from assessors + CLC heat pump tracking.
+    st.markdown("""
+    **What the chart tells us:**
+    - Propane emissions are declining as homes convert to heat pumps
+    - Residential electricity usage is increasing (heat pumps use electricity)
+    - Commercial electricity usage remains relatively stable
     """)
 
     st.divider()
 
-# Load the data
-df = load_assessors_data()
+    # SECTION 2: ELECTRICITY DATA
+    st.header("2. Electricity Usage: Direct Measurement")
 
-if df is not None:
-    st.success(f"Successfully loaded {len(df)} property records")
+    st.markdown("""
+    ### How We Got This Data
 
-    # Filter out records with no NetSF data
-    df_with_sqft = df[df['NetSF'].notna() & (df['NetSF'] > 0)].copy()
+    Electricity usage data comes from **Mass Save's Geographic Report**, which aggregates actual utility billing data
+    by municipality and sector. This is direct measurement—no estimates or calculations needed.
 
-    st.write(f"Properties with square footage data: {len(df_with_sqft):,}")
+    **Data Source**: [Mass Save Geographic Savings](https://www.masssavedata.com/Public/GeographicSavings)
+    """)
 
-    # Total Square Footage by HVAC Type
-    st.subheader("Total Square Footage by HVAC Type")
+    # Display electricity data table
+    st.subheader("Electricity Consumption by Year")
 
-    hvac_sqft = df_with_sqft.groupby('HVAC')['NetSF'].sum().sort_values(ascending=False).reset_index()
-    hvac_sqft.columns = ['HVAC', 'Total Square Feet']
+    # Create table
+    electricity_table = []
+    for year in sorted(mass_save_data['Year'].unique()):
+        year_data = mass_save_data[mass_save_data['Year'] == year]
+        res_row = year_data[year_data['Sector'] == 'Residential & Low-Income'].iloc[0]
+        com_row = year_data[year_data['Sector'] == 'Commercial & Industrial'].iloc[0]
 
-    fig_hvac = go.Figure(data=[go.Bar(
-        x=hvac_sqft['HVAC'],
-        y=hvac_sqft['Total Square Feet'],
-        marker=dict(color='#06A77D')
-    )])
+        electricity_table.append({
+            'Year': int(year),
+            'Residential (MWh)': f"{res_row['Electric_MWh']:,.0f}",
+            'Commercial (MWh)': f"{com_row['Electric_MWh']:,.0f}",
+            'Total (MWh)': f"{res_row['Electric_MWh'] + com_row['Electric_MWh']:,.0f}"
+        })
 
-    fig_hvac.update_layout(
-        xaxis_title="HVAC Type",
-        yaxis_title="Total Square Feet",
-        height=500,
-        xaxis_tickangle=-45
-    )
+    st.dataframe(pd.DataFrame(electricity_table), hide_index=True, use_container_width=True)
 
-    st.plotly_chart(fig_hvac, use_container_width=True)
+    st.info("""
+    💡 **Note**: This electricity data is already complete—we have actual measurements from utilities.
+    The Mass Save data includes all electricity consumption, including from heat pumps.
 
-    # Total Square Footage by FUEL Type
-    st.subheader("Total Square Footage by Fuel Type")
+    For reference, you can convert electricity to emissions using the grid's emission factor (0.000239 tCO2e/kWh),
+    but this conversion isn't needed for the propane displacement analysis below.
+    """)
 
-    fuel_sqft = df_with_sqft.groupby('FUEL')['NetSF'].sum().sort_values(ascending=False).reset_index()
-    fuel_sqft.columns = ['FUEL', 'Total Square Feet']
-
-    fig_fuel = go.Figure(data=[go.Bar(
-        x=fuel_sqft['FUEL'],
-        y=fuel_sqft['Total Square Feet'],
-        marker=dict(color='#D45113')
-    )])
-
-    fig_fuel.update_layout(
-        xaxis_title="Fuel Type",
-        yaxis_title="Total Square Feet",
-        height=500,
-        xaxis_tickangle=-45
-    )
-
-    st.plotly_chart(fig_fuel, use_container_width=True)
-
-    # Combined HVAC and FUEL matrix
-    st.subheader("Square Footage by HVAC and Fuel Type (Heatmap)")
-
-    # Create pivot table
-    pivot = df_with_sqft.pivot_table(
-        values='NetSF',
-        index='HVAC',
-        columns='FUEL',
-        aggfunc='sum',
-        fill_value=0
-    )
-
-    # Sort by total square footage
-    pivot = pivot.loc[pivot.sum(axis=1).sort_values(ascending=False).index]
-
-    fig_heatmap = go.Figure(data=go.Heatmap(
-        z=pivot.values,
-        x=pivot.columns,
-        y=pivot.index,
-        colorscale='YlOrRd',
-        text=pivot.values.astype(int),
-        texttemplate='%{text:,}',
-        textfont={"size": 10},
-        hoverongaps=False
-    ))
-
-    fig_heatmap.update_layout(
-        xaxis_title="Fuel Type",
-        yaxis_title="HVAC Type",
-        height=700
-    )
-
-    st.plotly_chart(fig_heatmap, use_container_width=True)
-
-    # Summary statistics
-    st.subheader("Summary Statistics")
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        st.metric("Total Properties", f"{len(df):,}")
-        st.metric("Properties with Sq Ft Data", f"{len(df_with_sqft):,}")
-
-    with col2:
-        st.metric("Total Square Footage", f"{df_with_sqft['NetSF'].sum():,.0f}")
-        st.metric("Average Property Size", f"{df_with_sqft['NetSF'].mean():,.0f} sq ft")
-
-    with col3:
-        most_common_hvac = df_with_sqft['HVAC'].mode()[0] if len(df_with_sqft['HVAC'].mode()) > 0 else "N/A"
-        most_common_fuel = df_with_sqft['FUEL'].mode()[0] if len(df_with_sqft['FUEL'].mode()) > 0 else "N/A"
-        st.metric("Most Common HVAC", most_common_hvac)
-        st.metric("Most Common Fuel", most_common_fuel)
-
-    # Data tables
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.subheader("HVAC Breakdown")
-        hvac_counts = df_with_sqft['HVAC'].value_counts().reset_index()
-        hvac_counts.columns = ['HVAC Type', 'Count']
-        st.dataframe(hvac_counts, hide_index=True)
-
-    with col2:
-        st.subheader("Fuel Breakdown")
-        fuel_counts = df_with_sqft['FUEL'].value_counts().reset_index()
-        fuel_counts.columns = ['Fuel Type', 'Count']
-        st.dataframe(fuel_counts, hide_index=True)
-
-    # Divider before emissions section
     st.divider()
 
-    # ESTIMATED EMISSIONS SECTION
-    st.header("Estimated Community-Wide Emissions")
+    # SECTION 3: FOSSIL FUEL HEATING
+    st.header("3. Fossil Fuel Heating: Estimated from Property Data")
 
-    # Methodology and Assumptions (prominently displayed)
-    with st.expander("📋 **Methodology & Assumptions** (Click to expand)", expanded=False):
-        st.markdown("""
-        ### Data Source
-        - **Source**: Truro Assessors Database (2019 tax year data)
-        - **Properties Analyzed**: Residential and commercial properties (PropertyType = 'R')
-        - **Exclusions**: Municipal/exempt properties (PropertyType = 'E') are excluded as they are tracked separately in the Municipal Energy page
-        """)
+    st.markdown("""
+    ### Why Estimation is Necessary
 
-        st.markdown("### Seasonal Adjustment Methodology")
-        st.markdown("Based on CLC census data showing Truro's seasonal nature:")
+    Unlike electricity, there's no centralized reporting for propane (and oil) consumption in Truro.
+    Homes buy propane from various suppliers, and there's no municipal aggregation of this data.
 
-        # Seasonal breakdown table
-        seasonal_data = pd.DataFrame({
-            'Property Type': ['Seasonal/Vacant', 'Year-Round Occupied'],
-            '% of Properties': ['67.1%', '32.9%'],
-            'Heating Usage Factor': ['30%', '100%'],
-            'Notes': ['Heat at maintenance level or off', 'Full heating']
-        })
-        st.table(seasonal_data)
+    Instead, we **estimate** heating fuel usage based on building characteristics from the Assessors Database.
+    """)
 
-        st.markdown("""
-        **Property Category Adjustments:**
-        """)
+    st.subheader("Step 1: Property Inventory")
 
-        # Property category table
-        category_data = pd.DataFrame({
-            'Category': ['Residential', 'Motels/Resorts', 'Commercial'],
-            'Heating Factor': ['53% (weighted avg)', '30% (100% seasonal)', '65% (estimated)'],
-            'Notes': ['Statistical split', 'Closed in winter', 'Needs refinement']
-        })
-        st.table(category_data)
+    st.markdown("""
+    The **Truro Assessors Database (2019)** contains detailed information about every property in town, including:
+    - Square footage
+    - Heating fuel type (Oil, Propane, Electric, etc.)
+    - HVAC system type
+    - Property use (residential, commercial, seasonal)
+    """)
 
-        st.markdown("""
-        **Calculation Example for Residential:**
-        - Seasonal adjustment factor = (0.671 × 0.30) + (0.329 × 1.00) = **0.530** or 53% of theoretical full-year heating
-        """)
+    if df is not None:
+        # Property counts
+        df_with_sqft = df[df['NetSF'].notna() & (df['NetSF'] > 0)].copy()
 
-        st.markdown("### Fuel Consumption Benchmarks")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Properties", f"{len(df):,}")
+        with col2:
+            st.metric("With Square Footage", f"{len(df_with_sqft):,}")
+        with col3:
+            propane_count = len(df_with_sqft[df_with_sqft['FUEL'] == 'GAS'])
+            st.metric("Propane Heating", f"{propane_count:,}")
 
-        # Fuel consumption table
-        fuel_consumption_data = pd.DataFrame({
-            'Fuel Type': ['Heating Oil', 'Propane (GAS)', 'Electric Resistance', 'Heat Pumps'],
-            'Consumption Rate': ['0.40 gal/sq ft/year', '0.39 gal/sq ft/year', '~12 kWh/sq ft/year', '~4 kWh/sq ft/year'],
-            'Source': ['Mass.gov', 'Mass.gov', '⚠️ ESTIMATE', '⚠️ ESTIMATE'],
-            'Notes': [
-                'Based on MA average',
-                'Truro has no natural gas',
-                'Needs validation',
-                'Assumes COP ~3.0'
-            ]
-        })
-        st.table(fuel_consumption_data)
+        # Show fuel type breakdown
+        st.markdown("**Heating Fuel Distribution:**")
+        fuel_counts = df_with_sqft['FUEL'].value_counts().reset_index()
+        fuel_counts.columns = ['Fuel Type', 'Number of Properties']
+        st.dataframe(fuel_counts, hide_index=True, use_container_width=True)
 
-        st.markdown("""
-        Source: [Mass.gov Household Heating Costs](https://www.mass.gov/info-details/household-heating-costs)
+    st.subheader("Step 2: Estimate Fuel Consumption")
 
-        ⚠️ **Electric heating benchmarks are rough estimates and need verification with local data**
-        """)
+    st.markdown("""
+    For each property, we estimate annual fuel consumption based on:
+    1. **Square footage** (larger homes use more fuel)
+    2. **Fuel consumption benchmarks** (gallons per square foot per year)
+    3. **Seasonal adjustment** (seasonal homes use less heating)
+    """)
 
-        st.markdown("### Emission Factors")
-        st.markdown("All emission factors sourced from `emission_factors.csv`:")
+    # Consumption benchmarks
+    consumption_benchmarks = pd.DataFrame({
+        'Fuel Type': ['Heating Oil', 'Propane', 'Electric Resistance', 'Heat Pumps'],
+        'Consumption Rate': ['0.40 gal/sq ft/year', '0.39 gal/sq ft/year', '~12 kWh/sq ft/year ⚠️', '~4 kWh/sq ft/year ⚠️'],
+        'Source': ['Mass.gov', 'Mass.gov', 'Estimate', 'Estimate (COP ~3.0)']
+    })
 
-        # Emission factors table
-        emission_factors_data = pd.DataFrame({
-            'Fuel Type': ['Heating Oil', 'Propane', 'Electricity'],
-            'Emission Factor': ['0.01030 tCO2e/gal', '0.00574 tCO2e/gal', '0.000239 tCO2e/kWh'],
-            'Source Row': ['Row 8 (Diesel oil)', 'Row 5 (Propane)', 'Row 9 (NPCC New England)'],
-            'Original Units': ['kg CO2e/gal', 'kg CO2e/gal', '239 kg CO2e/MWh']
-        })
-        st.table(emission_factors_data)
+    st.table(consumption_benchmarks)
 
-        st.markdown("""
-        ### Calculation Formula
-        For each property:
-        ```
-        Fuel Consumption = Square Footage × Fuel Rate (gal or kWh per sq ft) × Seasonal Adjustment Factor
-        Emissions (mtCO2e) = Fuel Consumption × Emission Factor
-        ```
-        """)
+    st.warning("""
+    ⚠️ **Important**: Oil and propane benchmarks come from [Mass.gov](https://www.mass.gov/info-details/household-heating-costs),
+    but electric heating rates are rough estimates that should be validated with local energy assessors.
+    """)
 
-        st.markdown("### Key Limitations & Uncertainties")
-        st.markdown("⚠️ **Important Caveats:**")
+    st.subheader("Step 3: Seasonal Adjustment")
 
-        # Limitations table
-        limitations_data = pd.DataFrame({
-            'Limitation': [
-                'Statistical Approach',
-                'Electric Heating Benchmarks',
-                '2019 Data',
-                'Actual Usage Varies',
-                'Commercial Factors'
-            ],
-            'Description': [
-                'Don\'t know which specific properties are seasonal',
-                'kWh/sq ft estimates need validation with local data',
-                'May not reflect recent renovations or fuel switching',
-                'Depends on insulation, thermostats, behavior, weather, etc.',
-                'Simplified adjustments - could be refined with business data'
-            ]
-        })
-        st.table(limitations_data)
+    st.markdown("""
+    Truro has a high percentage of seasonal properties. These properties are either vacant or heated at minimal levels
+    during winter, so they use much less fuel than year-round homes.
 
-        st.markdown("""
-        ### Recommendations for Improvement
-        - Obtain actual utility billing data if possible
-        - Validate electric heating benchmarks with local energy assessors
-        - Refine commercial property heating factors with business-specific data
-        - Consider updating with more recent assessors data
-        """)
+    Based on CLC census data:
+    """)
 
-    # Calculate emissions
-    df_emissions = calculate_residential_emissions(df)
+    seasonal_breakdown = pd.DataFrame({
+        'Property Type': ['Seasonal/Vacant', 'Year-Round Occupied'],
+        '% of Residential': ['67.1%', '32.9%'],
+        'Heating Usage': ['30% of full heating', '100% of full heating'],
+        'Rationale': ['Heat at maintenance level or off', 'Full heating all winter']
+    })
 
-    # Display totals
-    st.subheader("Total Estimated Emissions")
+    st.table(seasonal_breakdown)
 
-    total_emissions = df_emissions['mtco2e'].sum()
-    residential_emissions = df_emissions[df_emissions['is_residential']]['mtco2e'].sum()
-    commercial_emissions = df_emissions[df_emissions['is_commercial']]['mtco2e'].sum()
-    motel_emissions = df_emissions[df_emissions['is_motel_resort']]['mtco2e'].sum()
+    st.markdown("""
+    **Weighted Average for Residential Properties:**
+    - (67.1% × 30%) + (32.9% × 100%) = **53% of theoretical full-year heating**
 
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Total Emissions", f"{total_emissions:,.0f} mtCO2e")
-    with col2:
-        st.metric("Residential", f"{residential_emissions:,.0f} mtCO2e")
-    with col3:
-        st.metric("Commercial", f"{commercial_emissions:,.0f} mtCO2e")
-    with col4:
-        st.metric("Motels/Resorts", f"{motel_emissions:,.0f} mtCO2e")
+    This means our calculations assume the average residential property uses about half the fuel of a year-round occupied home.
+    """)
 
-    # Emissions by fuel type
-    st.subheader("Emissions by Fuel Type")
+    st.subheader("Step 4: Convert to Emissions")
 
-    fuel_emissions = df_emissions.groupby('FUEL')['mtco2e'].sum().sort_values(ascending=False).reset_index()
-    fuel_emissions.columns = ['Fuel Type', 'mtCO2e']
+    st.markdown("""
+    Finally, we convert fuel consumption to emissions using emission factors from `emission_factors.csv`:
+    """)
 
-    fig_fuel_emissions = go.Figure(data=[go.Bar(
-        x=fuel_emissions['Fuel Type'],
-        y=fuel_emissions['mtCO2e'],
-        marker=dict(color='#D45113')
-    )])
+    fuel_emissions = pd.DataFrame({
+        'Fuel Type': ['Heating Oil', 'Propane', 'Electricity'],
+        'Emission Factor': ['0.01030 tCO2e/gal', '0.00574 tCO2e/gal', '0.000239 tCO2e/kWh'],
+        'Source': ['Diesel oil factor', 'Propane factor', 'NPCC New England grid']
+    })
 
-    fig_fuel_emissions.update_layout(
-        xaxis_title="Fuel Type",
-        yaxis_title="mtCO2e",
+    st.table(fuel_emissions)
+
+    st.markdown("""
+    **Complete Calculation Example (Year-Round Propane Home):**
+    1. Property size: 2,000 sq ft
+    2. Consumption: 2,000 × 0.39 gal/sq ft × 1.00 (year-round) = 780 gallons/year
+    3. Emissions: 780 gal × 0.00574 tCO2e/gal = **4.5 mtCO2e/year**
+    """)
+
+    st.divider()
+
+    # SECTION 4: TRACKING THE TRANSITION
+    st.header("4. Tracking the Energy Transition: Heat Pump Adoption")
+
+    st.markdown("""
+    ### How Heat Pumps Change the Picture
+
+    As properties convert from propane heating to heat pumps:
+    - **Propane consumption decreases** (homes stop buying propane)
+    - **Electricity consumption increases** (heat pumps use electricity)
+    - **Net emissions usually decrease** (heat pumps are ~3x more efficient than resistance heating)
+
+    We track this transition by combining two data sources:
+    """)
+
+    # Data sources for heat pump tracking
+    st.subheader("Data Sources for Propane Displacement")
+
+    heat_pump_sources = pd.DataFrame({
+        'Year': ['2019', '2020', '2021-2023'],
+        'Source': ['Assessors Database', 'Interpolated (Linear)', 'Cape Light Compact'],
+        'Heat Pump Count': [
+            f"{propane_metadata['baseline_heat_pumps']} properties",
+            f"{propane_metadata['interpolated_2020']} properties (estimated)",
+            'Actual CLC installation tracking'
+        ],
+        'Data Quality': ['Actual property records', 'Estimated', 'Actual installations']
+    })
+
+    st.table(heat_pump_sources)
+
+    st.info("""
+    📊 **Why interpolate 2020?** We have a 2019 snapshot from assessors and 2021-2023 tracking from CLC.
+    We assume linear growth between these points to avoid a data gap.
+    """)
+
+    st.subheader("Heat Pump Growth Over Time")
+
+    # Chart showing heat pump adoption
+    fig_heat_pumps = go.Figure()
+
+    fig_heat_pumps.add_trace(go.Scatter(
+        x=propane_results['Year'],
+        y=propane_results['Heat_Pump_Locations'],
+        mode='lines+markers',
+        line=dict(width=3, color='#06A77D'),
+        marker=dict(size=10),
+        name='Heat Pump Installations'
+    ))
+
+    fig_heat_pumps.update_layout(
+        xaxis_title="Year",
+        yaxis_title="Number of Heat Pump Installations",
+        yaxis=dict(rangemode='tozero'),
         height=400
     )
 
-    st.plotly_chart(fig_fuel_emissions, use_container_width=True)
+    st.plotly_chart(fig_heat_pumps, use_container_width=True)
 
-    # Breakdown table
-    st.subheader("Emissions Breakdown")
+    st.subheader("Calculating Propane Displacement")
 
-    breakdown_data = {
-        'Category': ['Residential', 'Commercial', 'Motels/Resorts', '**Total**'],
-        'Properties': [
-            int(df_emissions['is_residential'].sum()),
-            int(df_emissions['is_commercial'].sum()),
-            int(df_emissions['is_motel_resort'].sum()),
-            int(len(df_emissions))
-        ],
-        'Square Footage': [
-            f"{df_emissions[df_emissions['is_residential']]['NetSF'].sum():,.0f}",
-            f"{df_emissions[df_emissions['is_commercial']]['NetSF'].sum():,.0f}",
-            f"{df_emissions[df_emissions['is_motel_resort']]['NetSF'].sum():,.0f}",
-            f"**{df_emissions['NetSF'].sum():,.0f}**"
-        ],
-        'Emissions (mtCO2e)': [
-            f"{residential_emissions:,.0f}",
-            f"{commercial_emissions:,.0f}",
-            f"{motel_emissions:,.0f}",
-            f"**{total_emissions:,.0f}**"
-        ]
-    }
+    st.markdown("""
+    ### Key Assumptions
 
-    st.dataframe(pd.DataFrame(breakdown_data), hide_index=True)
-
-    # Comparison note
-    st.info("""
-    💡 **Context**: These are *estimated* residential and commercial heating emissions for all of Truro,
-    based on assessors data and statistical modeling. Compare this to:
-    - **Municipal Buildings** emissions shown on the Municipal Energy page (~600-700 mtCO2e)
-    - **Municipal Vehicles** emissions shown on the Vehicles page (~300-400 tCO2e)
-
-    This residential/commercial estimate represents heating for ~3,000 properties vs. the handful of municipal buildings and vehicles.
+    We make several assumptions to estimate how much propane consumption has decreased:
     """)
 
-    # ACTUAL ENERGY USAGE DATA FROM MASS SAVE
-    st.divider()
-    st.header("Actual Energy Usage Data (Mass Save)")
-
-    mass_save_df = load_mass_save_data()
-
-    if mass_save_df is not None:
-        st.markdown("""
-        This section shows **actual electricity consumption data** from Mass Save's Geographic Report,
-        which provides real utility billing data aggregated by municipality and sector.
-
-        **Key Advantage**: Unlike the estimates above based on square footage and assumptions,
-        this data represents actual measured electricity consumption in Truro.
-        """)
-
-        # Filter to get residential and commercial sectors
-        residential_data = mass_save_df[mass_save_df['Sector'] == 'Residential & Low-Income']
-        commercial_data = mass_save_df[mass_save_df['Sector'] == 'Commercial & Industrial']
-
-        # Display latest year metrics
-        latest_year = mass_save_df['Year'].max()
-        latest_res = residential_data[residential_data['Year'] == latest_year].iloc[0]
-        latest_com = commercial_data[commercial_data['Year'] == latest_year].iloc[0]
-
-        st.subheader(f"Year {latest_year} Actual Electricity Usage")
-
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            res_mwh = latest_res['Electric_MWh']
-            st.metric("Residential & Low-Income", f"{res_mwh:,.0f} MWh")
-        with col2:
-            com_mwh = latest_com['Electric_MWh']
-            st.metric("Commercial & Industrial", f"{com_mwh:,.0f} MWh")
-        with col3:
-            total_mwh = res_mwh + com_mwh
-            st.metric("Total", f"{total_mwh:,.0f} MWh")
-
-        # Calculate emissions from electricity
-        ELECTRIC_EMISSION_FACTOR = 0.000239  # tCO2e per kWh
-        res_emissions = res_mwh * 1000 * ELECTRIC_EMISSION_FACTOR
-        com_emissions = com_mwh * 1000 * ELECTRIC_EMISSION_FACTOR
-        total_electric_emissions = res_emissions + com_emissions
-
-        st.subheader(f"Estimated Emissions from Electricity ({latest_year})")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Residential", f"{res_emissions:,.1f} mtCO2e")
-        with col2:
-            st.metric("Commercial", f"{com_emissions:,.1f} mtCO2e")
-        with col3:
-            st.metric("Total", f"{total_electric_emissions:,.1f} mtCO2e")
-
-        # Trend over time
-        st.subheader("Electricity Usage Trend Over Time")
-
-        # Sort by year for proper line chart
-        residential_data_sorted = residential_data.sort_values('Year')
-        commercial_data_sorted = commercial_data.sort_values('Year')
-
-        fig_mass_save = go.Figure()
-
-        fig_mass_save.add_trace(go.Scatter(
-            x=residential_data_sorted['Year'],
-            y=residential_data_sorted['Electric_MWh'],
-            name='Residential & Low-Income',
-            mode='lines+markers',
-            line=dict(width=3),
-            marker=dict(size=8)
-        ))
-
-        fig_mass_save.add_trace(go.Scatter(
-            x=commercial_data_sorted['Year'],
-            y=commercial_data_sorted['Electric_MWh'],
-            name='Commercial & Industrial',
-            mode='lines+markers',
-            line=dict(width=3),
-            marker=dict(size=8)
-        ))
-
-        fig_mass_save.update_layout(
-            xaxis_title="Year",
-            yaxis_title="Electricity Usage (MWh)",
-            hovermode='x unified',
-            height=500
-        )
-
-        st.plotly_chart(fig_mass_save, use_container_width=True)
-
-        # Data table
-        st.subheader("Electricity Usage by Year")
-
-        # Pivot data for table display
-        table_data = []
-        for year in sorted(mass_save_df['Year'].unique()):
-            year_data = mass_save_df[mass_save_df['Year'] == year]
-            res_row = year_data[year_data['Sector'] == 'Residential & Low-Income'].iloc[0]
-            com_row = year_data[year_data['Sector'] == 'Commercial & Industrial'].iloc[0]
-
-            table_data.append({
-                'Year': int(year),
-                'Residential (MWh)': f"{res_row['Electric_MWh']:,.0f}",
-                'Commercial (MWh)': f"{com_row['Electric_MWh']:,.0f}",
-                'Total (MWh)': f"{res_row['Electric_MWh'] + com_row['Electric_MWh']:,.0f}",
-                'Total Emissions (mtCO2e)': f"{(res_row['Electric_MWh'] + com_row['Electric_MWh']) * 1000 * ELECTRIC_EMISSION_FACTOR:,.1f}"
-            })
-
-        st.dataframe(pd.DataFrame(table_data), hide_index=True)
-
-        st.warning("""
-        ⚠️ **Important Notes:**
-        - This data shows **electricity usage only** (not oil, propane, or other fuels)
-        - Includes all electricity uses: heating, cooling, lighting, appliances, etc.
-        - Does not distinguish between electric resistance heating and heat pumps
-        - Mass Save data aggregates all residential/commercial properties, so we cannot break down by seasonal vs. year-round
-        - Use this data to validate or refine the electric heating estimates in the assessor-based calculations above
-        """)
-
-        # Comparison insight
-        st.info("""
-        💡 **Validation Opportunity**: Compare the actual electricity usage here with the electric heating
-        estimates in the assessor-based calculations above. Large discrepancies suggest the electric heating
-        benchmarks (~12 kWh/sq ft for resistance, ~4 kWh/sq ft for heat pumps) may need adjustment.
-        """)
-
-    # PROPANE DISPLACEMENT BY HEAT PUMPS
-    st.divider()
-    st.header("Propane Displacement by Heat Pumps (2019-2023)")
-
-    propane_results = calculate_propane_displacement()
-
-    if propane_results is not None:
-        results_df, metadata = propane_results
-
-        st.markdown("""
-        This section estimates the reduction in propane consumption as residential properties
-        convert from propane heating to heat pumps. The baseline comes from the 2019 Assessors Database
-        showing 92 heat pump installations, with subsequent growth tracked through Cape Light Compact data.
-        """)
-
-        # Methodology expander
-        with st.expander("📋 **Methodology & Assumptions** (Click to expand)", expanded=False):
-            st.markdown("""
-            ### Key Assumptions
-            """)
-
-            # Assumptions table
-            assumptions_data = pd.DataFrame({
-                'Assumption': [
-                    'Heat Pump Target',
-                    'Property Type',
-                    'Heating Factor',
-                    'Square Footage',
-                    'Baseline Year'
-                ],
-                'Value': [
-                    'Propane heating systems',
-                    'Year-round residential only',
-                    '100% (full heating)',
-                    f"{metadata['median_sqft']:,.0f} sq ft (median)",
-                    f"{metadata['baseline_year']} (Assessors data)"
-                ],
-                'Rationale': [
-                    'Propane most likely to be replaced; oil/electric less common for CLC conversions',
-                    'CLC-funded conversions assumed to be year-round homes',
-                    'Year-round properties heat at 100% vs. seasonal at 30%',
-                    'Median chosen as representative of typical property',
-                    'Most recent assessors data available'
-                ]
-            })
-            st.table(assumptions_data)
-
-            st.markdown("""
-            ### Data Sources & Timeline
-            """)
-
-            # Data sources table
-            data_sources = pd.DataFrame({
-                'Year': ['2019', '2020', '2021-2023'],
-                'Source': [
-                    'Assessors Database',
-                    'Interpolated (linear)',
-                    'Cape Light Compact'
-                ],
-                'Heat Pump Count': [
-                    f"{metadata['baseline_heat_pumps']} (actual)",
-                    f"{metadata['interpolated_2020']} (estimated)",
-                    'Actual CLC data'
-                ],
-                'Notes': [
-                    'Baseline from property records',
-                    'Assumed linear growth 2019→2021',
-                    'Tracked installations'
-                ]
-            })
-            st.table(data_sources)
-
-            st.markdown("""
-            ### Baseline Data
-            """)
-
-            # Baseline metrics table
-            baseline_data = pd.DataFrame({
-                'Metric': [
-                    'Total Year-Round Residential Propane Properties',
-                    'Median Property Size',
-                    'Propane Consumption per Property',
-                    'Baseline Total Propane Consumption',
-                    'Baseline Total Emissions'
-                ],
-                'Value': [
-                    f"{metadata['baseline_propane_properties']:,} properties",
-                    f"{metadata['median_sqft']:,.0f} sq ft",
-                    f"{metadata['propane_per_property_gal']:,.0f} gallons/year",
-                    f"{metadata['baseline_propane_gal']:,.0f} gallons/year",
-                    f"{metadata['baseline_propane_mtco2e']:,.1f} mtCO2e/year"
-                ]
-            })
-            st.table(baseline_data)
-
-            st.markdown("""
-            ### Calculation Method
-
-            **For each year (2019-2023):**
-            1. Track cumulative heat pump installations (assessors 2019 baseline, interpolated 2020, CLC 2021-2023)
-            2. Calculate conversions from 2019 baseline: `Conversions = Current_Locations - 92`
-            3. Calculate remaining propane properties: `Remaining = Total_Propane_Properties - Conversions`
-            4. Calculate remaining propane usage: `Remaining_Usage = Remaining_Properties × Propane_per_Property`
-            5. Calculate propane saved: `Saved = Conversions × Propane_per_Property`
-
-            **Exclusions from baseline propane properties:**
-            - Motels, resorts, inns (100% seasonal, not typical CLC conversion targets)
-            - Commercial properties (restaurants, retail, etc.)
-            """)
-
-            st.markdown("""
-            ### Key Limitations
-            """)
-
-            # Limitations table
-            limitations_data = pd.DataFrame({
-                'Limitation': [
-                    '2020 Interpolation',
-                    'Direct Attribution',
-                    'Median Square Footage',
-                    'Electric Increase Not Tracked',
-                    'Other Fuel Switching'
-                ],
-                'Description': [
-                    '2020 value is linearly interpolated between 2019 assessors (92) and 2021 CLC (165) data',
-                    'Cannot verify that all CLC heat pumps replaced propane specifically',
-                    'Individual properties vary; some larger/smaller than median',
-                    'Heat pumps increase electricity usage, but Mass Save data already captures this',
-                    'Some propane properties may have switched to other fuels not related to heat pumps'
-                ]
-            })
-            st.table(limitations_data)
-
-        # Display baseline metrics at top
-        st.subheader(f"Baseline Propane Usage ({metadata['baseline_year']})")
-
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Propane Properties", f"{metadata['baseline_propane_properties']:,}")
-        with col2:
-            st.metric("Median Size", f"{metadata['median_sqft']:,.0f} sq ft")
-        with col3:
-            st.metric("Total Usage", f"{metadata['baseline_propane_gal']:,.0f} gal/year")
-        with col4:
-            st.metric("Total Emissions", f"{metadata['baseline_propane_mtco2e']:,.1f} mtCO2e")
-
-        # Year-by-year results
-        st.subheader("Propane Reduction Over Time")
-
-        # Chart showing propane emissions decline
-        fig_propane = go.Figure()
-
-        fig_propane.add_trace(go.Scatter(
-            x=results_df['Year'],
-            y=results_df['Remaining_Propane_mtCO2e'],
-            name='Remaining Propane Emissions',
-            mode='lines+markers',
-            line=dict(width=3, color='#D45113'),
-            marker=dict(size=10),
-            fill='tozeroy',
-            fillcolor='rgba(212, 81, 19, 0.2)'
-        ))
-
-        fig_propane.add_trace(go.Scatter(
-            x=results_df['Year'],
-            y=results_df['Propane_Saved_mtCO2e'],
-            name='Propane Emissions Saved',
-            mode='lines+markers',
-            line=dict(width=3, color='#06A77D'),
-            marker=dict(size=10)
-        ))
-
-        fig_propane.update_layout(
-            xaxis_title="Year",
-            yaxis_title="Emissions (mtCO2e)",
-            hovermode='x unified',
-            height=500,
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1
-            )
-        )
-
-        st.plotly_chart(fig_propane, use_container_width=True)
-
-        # Display detailed year-by-year table
-        st.subheader("Year-by-Year Conversion Details")
-
-        # Format table data
-        table_display = results_df.copy()
-        table_display['Heat_Pump_Locations'] = table_display['Heat_Pump_Locations'].astype(int)
-        table_display['Cumulative_Conversions'] = table_display['Cumulative_Conversions'].astype(int)
-        table_display['Remaining_Propane_Properties'] = table_display['Remaining_Propane_Properties'].astype(int)
-        table_display['Remaining_Propane_Gal'] = table_display['Remaining_Propane_Gal'].apply(lambda x: f"{x:,.0f}")
-        table_display['Remaining_Propane_mtCO2e'] = table_display['Remaining_Propane_mtCO2e'].apply(lambda x: f"{x:,.1f}")
-        table_display['Propane_Saved_Gal'] = table_display['Propane_Saved_Gal'].apply(lambda x: f"{x:,.0f}")
-        table_display['Propane_Saved_mtCO2e'] = table_display['Propane_Saved_mtCO2e'].apply(lambda x: f"{x:,.1f}")
-        table_display['Percent_Reduction'] = table_display['Percent_Reduction'].apply(lambda x: f"{x:.1f}%")
-
-        # Rename columns for display
-        table_display.columns = [
-            'Year',
-            'Heat Pump Locations',
-            'Cumulative Conversions',
-            'Remaining Propane Properties',
-            'Remaining Propane (gal/yr)',
-            'Remaining Emissions (mtCO2e)',
-            'Propane Saved (gal/yr)',
-            'Emissions Saved (mtCO2e)',
-            '% Reduction from Baseline'
+    assumptions = pd.DataFrame({
+        'Assumption': [
+            'Heat pumps replace propane',
+            'CLC installations are year-round homes',
+            'Representative property size',
+            'Conversion timing'
+        ],
+        'What We Assume': [
+            'Heat pumps replaced propane systems (not oil or electric)',
+            'All CLC-funded installations are in year-round occupied homes',
+            f"Use median square footage: {propane_metadata['median_sqft']:,.0f} sq ft",
+            'Properties converted in the year they appear in CLC data'
+        ],
+        'Why This Matters': [
+            'Propane most common target for conversions in coastal MA',
+            'Year-round homes use 100% heating vs 30% for seasonal',
+            'Cannot know actual size of each converted property',
+            'Gives us year-by-year displacement estimates'
         ]
+    })
 
-        st.dataframe(table_display, hide_index=True)
+    st.table(assumptions)
 
-        # Key insights
-        latest_year = results_df.iloc[-1]
+    st.subheader("Propane Reduction Results")
 
-        st.success(f"""
-        📊 **Summary for {int(latest_year['Year'])}**:
-        - **{int(latest_year['Cumulative_Conversions'])} properties** have converted from propane to heat pumps
-        - **{latest_year['Propane_Saved_mtCO2e']:.1f} mtCO2e** in propane emissions eliminated annually
-        - This represents a **{latest_year['Percent_Reduction']:.1f}% reduction** from the {metadata['baseline_year']} baseline
-        """)
+    st.markdown("""
+    By tracking heat pump installations and applying our assumptions, we can estimate how propane emissions have declined:
+    """)
 
-        st.info("""
-        💡 **Context**: While propane emissions have decreased, the Mass Save data above shows that
-        electricity consumption has increased over this period. Heat pumps use electricity but are
-        approximately 3x more efficient than electric resistance heating, so the net emissions impact
-        depends on the electricity grid's carbon intensity (0.000239 tCO2e/kWh in our calculations).
+    # Chart showing propane decline
+    fig_propane_decline = go.Figure()
 
-        To calculate the net emissions change, you would need to:
-        1. Estimate heat pump electricity consumption: ~4 kWh/sq ft × median sq ft × conversions
-        2. Multiply by electricity emission factor: 0.000239 tCO2e/kWh
-        3. Compare to propane emissions saved
+    fig_propane_decline.add_trace(go.Scatter(
+        x=propane_results['Year'],
+        y=propane_results['Remaining_Propane_mtCO2e'],
+        name='Remaining Propane Emissions',
+        mode='lines+markers',
+        line=dict(width=3, color='#D45113'),
+        marker=dict(size=10),
+        fill='tozeroy',
+        fillcolor='rgba(212, 81, 19, 0.2)'
+    ))
 
-        This analysis could be added in future iterations with more detailed heat pump usage data.
-        """)
+    fig_propane_decline.add_trace(go.Scatter(
+        x=propane_results['Year'],
+        y=propane_results['Propane_Saved_mtCO2e'],
+        name='Propane Emissions Eliminated',
+        mode='lines+markers',
+        line=dict(width=3, color='#06A77D'),
+        marker=dict(size=10)
+    ))
 
-    else:
-        st.error("Unable to load propane displacement data. Please check that assessors and heat pump data files are available.")
+    fig_propane_decline.update_layout(
+        xaxis_title="Year",
+        yaxis_title="Emissions (mtCO2e)",
+        yaxis=dict(rangemode='tozero'),
+        hovermode='x unified',
+        height=500,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
+
+    st.plotly_chart(fig_propane_decline, use_container_width=True)
+
+    # Year-by-year table
+    st.markdown("**Year-by-Year Breakdown:**")
+
+    table_display = propane_results.copy()
+    table_display = table_display[[
+        'Year', 'Heat_Pump_Locations', 'Cumulative_Conversions',
+        'Remaining_Propane_mtCO2e', 'Propane_Saved_mtCO2e', 'Percent_Reduction'
+    ]]
+
+    table_display['Year'] = table_display['Year'].astype(int)
+    table_display['Heat_Pump_Locations'] = table_display['Heat_Pump_Locations'].astype(int)
+    table_display['Cumulative_Conversions'] = table_display['Cumulative_Conversions'].astype(int)
+    table_display['Remaining_Propane_mtCO2e'] = table_display['Remaining_Propane_mtCO2e'].apply(lambda x: f"{x:,.1f}")
+    table_display['Propane_Saved_mtCO2e'] = table_display['Propane_Saved_mtCO2e'].apply(lambda x: f"{x:,.1f}")
+    table_display['Percent_Reduction'] = table_display['Percent_Reduction'].apply(lambda x: f"{x:.1f}%")
+
+    table_display.columns = [
+        'Year',
+        'Total Heat Pumps',
+        'Conversions from 2019',
+        'Remaining Emissions (mtCO2e)',
+        'Emissions Eliminated (mtCO2e)',
+        '% Reduction'
+    ]
+
+    st.dataframe(table_display, hide_index=True, use_container_width=True)
+
+    # Summary
+    latest_year_data = propane_results.iloc[-1]
+
+    st.success(f"""
+    📊 **Bottom Line ({int(latest_year_data['Year'])})**:
+    - **{int(latest_year_data['Cumulative_Conversions'])} properties** have converted from propane to heat pumps since 2019
+    - **{latest_year_data['Propane_Saved_mtCO2e']:.1f} mtCO2e** in propane emissions eliminated annually
+    - This represents a **{latest_year_data['Percent_Reduction']:.1f}% reduction** from the 2019 baseline
+    """)
+
+    st.divider()
+
+    # SECTION 5: LIMITATIONS
+    st.header("5. Important Limitations & Uncertainties")
+
+    st.markdown("""
+    ### What We're Confident About
+    - ✅ **Electricity consumption**: Direct measurements from utilities
+    - ✅ **Heat pump installations**: Actual CLC tracking data (2021-2023)
+    - ✅ **Property characteristics**: Real assessors data (2019)
+
+    ### What Involves Assumptions & Estimates
+    """)
+
+    limitations = pd.DataFrame({
+        'Area': [
+            'Propane Consumption',
+            'Electric Heating Rates',
+            'Seasonal Properties',
+            'Heat Pump Targets',
+            '2020 Heat Pump Count',
+            'Property Sizes',
+            'Net Emissions Impact'
+        ],
+        'Limitation': [
+            'No direct measurement available',
+            'kWh/sq ft estimates not validated locally',
+            'Cannot identify which specific properties are seasonal',
+            'Cannot verify each heat pump replaced propane specifically',
+            'Interpolated value (linear assumption)',
+            'Using median square footage, actual properties vary',
+            'Need to calculate increased electricity vs decreased propane'
+        ],
+        'How We Address It': [
+            'Use Mass.gov benchmarks (0.39 gal/sq ft)',
+            'Clearly mark as estimates needing validation',
+            'Apply statistical approach (67.1% seasonal × 30% factor)',
+            'Assume propane target based on MA coastal patterns',
+            'Reasonable given assessors (92) and 2021 CLC (165) data',
+            'Best available proxy for typical conversion',
+            'Could add in future with detailed heat pump usage analysis'
+        ]
+    })
+
+    st.dataframe(limitations, hide_index=True, use_container_width=True)
+
+    st.info("""
+    💡 **Future Improvements:**
+    - Validate electric heating benchmarks with Mass Save actual usage data
+    - Refine seasonal property identification (tax records, utility connection data)
+    - Calculate net emissions change (propane savings vs electricity increase)
+    - Update with newer assessors data when available
+    - Track oil heating displacement separately from propane
+    """)
+
+else:
+    st.error("Unable to load required data. Please check that all data files are available.")
