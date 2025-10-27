@@ -587,31 +587,10 @@ if vehicles_df is not None and energy_df is not None and mass_save_data is not N
         frames=frames
     )
 
-    # Add animation controls
+    # Add slider control (no play/pause buttons)
     fig_animated.update_layout(
         title=f"Year {int(years[0])}",
         height=500,
-        updatemenus=[dict(
-            type="buttons",
-            direction="left",
-            buttons=[
-                dict(label="Play",
-                     method="animate",
-                     args=[None, {"frame": {"duration": 1000, "redraw": True},
-                                  "fromcurrent": True,
-                                  "mode": "immediate",
-                                  "transition": {"duration": 300}}]),
-                dict(label="Pause",
-                     method="animate",
-                     args=[[None], {"frame": {"duration": 0, "redraw": False},
-                                    "mode": "immediate",
-                                    "transition": {"duration": 0}}])
-            ],
-            x=0.1,
-            y=0,
-            xanchor="left",
-            yanchor="top"
-        )],
         sliders=[dict(
             active=0,
             steps=[dict(
