@@ -85,17 +85,32 @@ st.markdown("""
 
 **Potential Double Counting Concerns:**
 
-**A. Municipal Vehicles in Vehicle Count**
+**A. Electric Vehicle Home Charging** ✅ **ADDRESSED (with limitations)**
+- Battery Electric vehicles charged at home are counted in residential electricity (Mass Save data)
+- Including them in vehicle emissions would double count
+- **Current Fix:**
+  - Battery Electric vehicles: **Excluded** from vehicle totals (100% counted in residential electricity)
+  - Plug-in Hybrid vehicles: Emissions **reduced by 50%** (assume half from home charging, half from gasoline)
+  - Hybrid Electric vehicles: **100%** kept in vehicle total (self-charging, no home electricity)
+- **Limitations:**
+  - Assumes most EV charging occurs in Truro (at home)
+  - Charging outside of town (workplace, public chargers elsewhere) would not be captured in residential electricity
+  - May slightly undercount vehicle emissions if significant charging occurs outside Truro
+  - May slightly overcount residential electricity if charging is primarily done outside Truro
+  - **However**: Given current low EV adoption rates in Truro, this adjustment has minimal impact on total emissions
+
+**B. Municipal Vehicles in Vehicle Count**
 - The MassDOT vehicle census includes **all registered vehicles** in Truro
 - This includes the town's municipal fleet
 - Municipal fleet energy may already be tracked in municipal operations data
 
-**B. Municipal Buildings in Electricity Data**
+**C. Municipal Buildings in Electricity Data**
 - Mass Save data may include municipal building electricity
 - Need to verify if municipal consumption is separated from residential/commercial totals
 
 **Proposed Verification:**
 - **For Vehicles:**
+  - ✅ Electric vehicle home charging addressed (see above)
   - Determine if municipal fleet is separately tracked in energy data
   - If yes, subtract municipal fleet from total vehicle emissions OR remove from municipal energy
   - Cross-reference with town fleet records

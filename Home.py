@@ -34,8 +34,19 @@ if vehicles_df is not None and energy_df is not None and mass_save_data is not N
     # Extract year and use previous year as the calendar year
     vehicles_q1['year'] = vehicles_q1['Quarter_Date'].dt.year - 1
 
-    # Sum tCO2e by year for vehicles
-    vehicles_yearly = vehicles_q1.groupby('year')['tCo2e'].sum().reset_index()
+    # Exclude Battery Electric vehicles and adjust Plug-in Hybrid to avoid double counting with residential electricity
+    # Battery Electric: 100% of emissions already counted in residential electricity (home charging)
+    # Plug-in Hybrid: ~50% electric (already counted), ~50% gas (keep in vehicle total)
+    # Hybrid Electric: Self-charging, no home electricity use, keep 100%
+
+    # Filter out Battery Electric entirely
+    vehicles_q1_adjusted = vehicles_q1[vehicles_q1['Type'] != 'Battery Electric'].copy()
+
+    # For Plug-in Hybrid, reduce emissions by 50% (assume half from home charging, half from gasoline)
+    vehicles_q1_adjusted.loc[vehicles_q1_adjusted['Type'] == 'Plug-in Hybrid', 'tCo2e'] *= 0.5
+
+    # Sum tCO2e by year for vehicles (excluding electric vehicle home charging)
+    vehicles_yearly = vehicles_q1_adjusted.groupby('year')['tCo2e'].sum().reset_index()
     vehicles_yearly.columns = ['year', 'vehicles_tco2e']
 
     # Process energy data
@@ -333,8 +344,9 @@ if vehicles_df is not None and energy_df is not None and mass_save_data is not N
 
         st.plotly_chart(fig_line, use_container_width=True)
 
-        # Add warning note about 2024 estimates
+        # Add warning notes
         st.caption("⚠️ Note: 2024 data for residential fossil fuel heating and residential electricity are estimates based on 2023 values.")
+        st.caption("ℹ️ Note: To avoid double counting, Battery Electric vehicle emissions are excluded (assumed charged at home), and Plug-in Hybrid emissions are reduced by 50%. This assumes most EV charging occurs in Truro; charging outside of town would not be captured in residential electricity data. Given current low EV adoption rates, this adjustment has minimal impact on totals.")
     else:
         st.warning("Please select at least one category to display the chart.")
 
