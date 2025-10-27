@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from data_loader import load_vehicle_data, load_energy_data, load_mass_save_data, calculate_propane_displacement
+from data_loader import load_vehicle_data, load_energy_data, load_mass_save_data, calculate_total_fossil_fuel_heating
 
 # Page configuration
 st.set_page_config(
@@ -16,12 +16,12 @@ st.title("Town of Truro GHG Emissions Dashboard")
 vehicles_df = load_vehicle_data()
 energy_df = load_energy_data()
 mass_save_data = load_mass_save_data()
-propane_data_tuple = calculate_propane_displacement()
+fossil_fuel_data_tuple = calculate_total_fossil_fuel_heating()
 
-if vehicles_df is not None and energy_df is not None and mass_save_data is not None and propane_data_tuple is not None:
+if vehicles_df is not None and energy_df is not None and mass_save_data is not None and fossil_fuel_data_tuple is not None:
     st.success("Successfully loaded data from all sources")
 
-    propane_results, propane_metadata = propane_data_tuple
+    fossil_fuel_results, fossil_fuel_metadata = fossil_fuel_data_tuple
 
     # Process vehicles data
     # Convert Quarter to datetime
@@ -65,10 +65,10 @@ if vehicles_df is not None and energy_df is not None and mass_save_data is not N
     energy_yearly.columns = ['year', 'municipal_buildings_mtco2e']
 
     # Process residential/commercial energy data
-    # Propane emissions
-    propane_yearly = propane_results[['Year', 'Remaining_Propane_mtCO2e']].copy()
-    propane_yearly.columns = ['year', 'residential_propane_mtco2e']
-    propane_yearly['year'] = propane_yearly['year'].astype(int)
+    # Total fossil fuel heating emissions (oil + propane with heat pump displacement)
+    fossil_fuel_yearly = fossil_fuel_results[['year', 'total_fossil_fuel_mtco2e']].copy()
+    fossil_fuel_yearly.columns = ['year', 'residential_fossil_fuel_mtco2e']
+    fossil_fuel_yearly['year'] = fossil_fuel_yearly['year'].astype(int)
 
     # Residential electricity emissions
     ELECTRIC_EMISSION_FACTOR = 0.000239  # tCO2e per kWh
@@ -89,7 +89,7 @@ if vehicles_df is not None and energy_df is not None and mass_save_data is not N
     combined_df = pd.merge(vehicles_yearly, energy_yearly, on='year', how='outer')
     combined_df = pd.merge(combined_df, energy_electric, on='year', how='left')
     combined_df = pd.merge(combined_df, energy_other, on='year', how='left')
-    combined_df = pd.merge(combined_df, propane_yearly, on='year', how='left')
+    combined_df = pd.merge(combined_df, fossil_fuel_yearly, on='year', how='left')
     combined_df = pd.merge(combined_df, residential_electric_yearly, on='year', how='left')
     combined_df = pd.merge(combined_df, commercial_electric_yearly, on='year', how='left')
     combined_df = combined_df.sort_values('year')
@@ -98,14 +98,14 @@ if vehicles_df is not None and energy_df is not None and mass_save_data is not N
     # Filter to start from 2019 (when vehicle data begins)
     combined_df = combined_df[combined_df['year'] >= 2019]
 
-    # For 2024, copy 2023 data for residential propane and electricity
+    # For 2024, copy 2023 data for residential fossil fuel heating and electricity
     if 2023 in combined_df['year'].values:
         row_2023 = combined_df[combined_df['year'] == 2023].iloc[0]
 
         # Check if 2024 exists, if not create it, if yes update it
         if 2024 in combined_df['year'].values:
             # Update existing 2024 row
-            combined_df.loc[combined_df['year'] == 2024, 'residential_propane_mtco2e'] = row_2023['residential_propane_mtco2e']
+            combined_df.loc[combined_df['year'] == 2024, 'residential_fossil_fuel_mtco2e'] = row_2023['residential_fossil_fuel_mtco2e']
             combined_df.loc[combined_df['year'] == 2024, 'residential_electric_mtco2e'] = row_2023['residential_electric_mtco2e']
             combined_df.loc[combined_df['year'] == 2024, 'commercial_electric_mtco2e'] = row_2023['commercial_electric_mtco2e']
         else:
@@ -116,7 +116,7 @@ if vehicles_df is not None and energy_df is not None and mass_save_data is not N
                 'municipal_buildings_mtco2e': 0,
                 'electric_mtco2e': 0,
                 'other_fuels_mtco2e': 0,
-                'residential_propane_mtco2e': row_2023['residential_propane_mtco2e'],
+                'residential_fossil_fuel_mtco2e': row_2023['residential_fossil_fuel_mtco2e'],
                 'residential_electric_mtco2e': row_2023['residential_electric_mtco2e'],
                 'commercial_electric_mtco2e': row_2023['commercial_electric_mtco2e']
             })
@@ -125,7 +125,7 @@ if vehicles_df is not None and energy_df is not None and mass_save_data is not N
     # Calculate total emissions
     combined_df['total_tco2e'] = (combined_df['vehicles_tco2e'] +
                                    combined_df['municipal_buildings_mtco2e'] +
-                                   combined_df['residential_propane_mtco2e'] +
+                                   combined_df['residential_fossil_fuel_mtco2e'] +
                                    combined_df['residential_electric_mtco2e'] +
                                    combined_df['commercial_electric_mtco2e'])
 
@@ -188,7 +188,7 @@ if vehicles_df is not None and energy_df is not None and mass_save_data is not N
         if 'Residential Fossil Fuel Heating' in selected_categories:
             fig_stacked.add_trace(go.Scatter(
                 x=combined_df['year'],
-                y=combined_df['residential_propane_mtco2e'],
+                y=combined_df['residential_fossil_fuel_mtco2e'],
                 name='Residential Fossil Fuel Heating',
                 mode='lines',
                 line=dict(width=0),
@@ -273,7 +273,7 @@ if vehicles_df is not None and energy_df is not None and mass_save_data is not N
         if 'Residential Fossil Fuel Heating' in selected_categories:
             fig_line.add_trace(go.Scatter(
                 x=combined_df['year'],
-                y=combined_df['residential_propane_mtco2e'],
+                y=combined_df['residential_fossil_fuel_mtco2e'],
                 name='Residential Fossil Fuel Heating',
                 mode='lines+markers',
                 line=dict(width=3, color='rgb(212, 81, 19)'),
@@ -358,7 +358,7 @@ if vehicles_df is not None and energy_df is not None and mass_save_data is not N
     data_2023 = combined_df[combined_df['year'] == 2023].iloc[0]
 
     # Calculate changes
-    residential_heating_change = data_2023['residential_propane_mtco2e'] - data_2019['residential_propane_mtco2e']
+    residential_heating_change = data_2023['residential_fossil_fuel_mtco2e'] - data_2019['residential_fossil_fuel_mtco2e']
     residential_electric_change = data_2023['residential_electric_mtco2e'] - data_2019['residential_electric_mtco2e']
     vehicles_change = data_2023['vehicles_tco2e'] - data_2019['vehicles_tco2e']
     commercial_change = data_2023['commercial_electric_mtco2e'] - data_2019['commercial_electric_mtco2e']
@@ -371,7 +371,7 @@ if vehicles_df is not None and energy_df is not None and mass_save_data is not N
     with col1:
         st.metric(
             label="🏠 Residential Heating",
-            value=f"{data_2023['residential_propane_mtco2e']:.0f} mtCO2e",
+            value=f"{data_2023['residential_fossil_fuel_mtco2e']:.0f} mtCO2e",
             delta=f"{residential_heating_change:.0f} mtCO2e",
             delta_color="inverse"
         )
@@ -431,7 +431,7 @@ if vehicles_df is not None and energy_df is not None and mass_save_data is not N
     # Calculate sector totals
     sector_df = combined_df.copy()
     sector_df['Transportation'] = sector_df['vehicles_tco2e']
-    sector_df['Buildings'] = (sector_df['residential_propane_mtco2e'] +
+    sector_df['Buildings'] = (sector_df['residential_fossil_fuel_mtco2e'] +
                                sector_df['other_fuels_mtco2e'])
     sector_df['Energy (Electricity)'] = (sector_df['residential_electric_mtco2e'] +
                                           sector_df['commercial_electric_mtco2e'] +
@@ -635,7 +635,7 @@ if vehicles_df is not None and energy_df is not None and mass_save_data is not N
     st.subheader("Detailed Emissions Breakdown by Year")
     display_df = combined_df[[
         'year',
-        'residential_propane_mtco2e',
+        'residential_fossil_fuel_mtco2e',
         'residential_electric_mtco2e',
         'commercial_electric_mtco2e',
         'other_fuels_mtco2e',
