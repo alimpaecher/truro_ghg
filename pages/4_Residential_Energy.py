@@ -139,74 +139,103 @@ if df is not None:
         - **Source**: Truro Assessors Database (2019 tax year data)
         - **Properties Analyzed**: Residential and commercial properties (PropertyType = 'R')
         - **Exclusions**: Municipal/exempt properties (PropertyType = 'E') are excluded as they are tracked separately in the Municipal Energy page
+        """)
 
-        ### Seasonal Adjustment Methodology
-        Based on CLC census data showing Truro's seasonal nature:
+        st.markdown("### Seasonal Adjustment Methodology")
+        st.markdown("Based on CLC census data showing Truro's seasonal nature:")
 
-        - **67.1%** of properties are classified as seasonal/vacant
-        - **32.9%** of properties are year-round occupied
+        # Seasonal breakdown table
+        seasonal_data = pd.DataFrame({
+            'Property Type': ['Seasonal/Vacant', 'Year-Round Occupied'],
+            '% of Properties': ['67.1%', '32.9%'],
+            'Heating Usage Factor': ['30%', '100%'],
+            'Notes': ['Heat at maintenance level or off', 'Full heating']
+        })
+        st.table(seasonal_data)
 
-        **Heating Usage Assumptions:**
-        - **Seasonal properties**: Use 30% of year-round heating (heat kept at maintenance level ~50-55°F or turned off)
-        - **Year-round properties**: Use 100% heating
-        - **Motels/Resorts**: Assumed 100% seasonal (closed in winter)
-        - **Commercial properties**: Average adjustment of 65% (rough estimate - needs refinement)
+        st.markdown("""
+        **Property Category Adjustments:**
+        """)
 
+        # Property category table
+        category_data = pd.DataFrame({
+            'Category': ['Residential', 'Motels/Resorts', 'Commercial'],
+            'Heating Factor': ['53% (weighted avg)', '30% (100% seasonal)', '65% (estimated)'],
+            'Notes': ['Statistical split', 'Closed in winter', 'Needs refinement']
+        })
+        st.table(category_data)
+
+        st.markdown("""
         **Calculation Example for Residential:**
         - Seasonal adjustment factor = (0.671 × 0.30) + (0.329 × 1.00) = **0.530** or 53% of theoretical full-year heating
+        """)
 
-        ### Fuel Consumption Benchmarks
+        st.markdown("### Fuel Consumption Benchmarks")
 
-        **Heating Oil:**
-        - **0.40 gallons per square foot per year**
-        - Source: [Mass.gov Household Heating Costs](https://www.mass.gov/info-details/household-heating-costs)
-        - Based on average MA household consumption
+        # Fuel consumption table
+        fuel_consumption_data = pd.DataFrame({
+            'Fuel Type': ['Heating Oil', 'Propane (GAS)', 'Electric Resistance', 'Heat Pumps'],
+            'Consumption Rate': ['0.40 gal/sq ft/year', '0.39 gal/sq ft/year', '~12 kWh/sq ft/year', '~4 kWh/sq ft/year'],
+            'Source': ['Mass.gov', 'Mass.gov', '⚠️ ESTIMATE', '⚠️ ESTIMATE'],
+            'Notes': [
+                'Based on MA average',
+                'Truro has no natural gas',
+                'Needs validation',
+                'Assumes COP ~3.0'
+            ]
+        })
+        st.table(fuel_consumption_data)
 
-        **Propane (reported as "GAS" in data):**
-        - **0.39 gallons per square foot per year**
-        - Source: [Mass.gov Household Heating Costs](https://www.mass.gov/info-details/household-heating-costs)
-        - Note: Truro has no natural gas service; "GAS" refers to propane
+        st.markdown("""
+        Source: [Mass.gov Household Heating Costs](https://www.mass.gov/info-details/household-heating-costs)
 
-        **Electric Resistance Heating:**
-        - **~12 kWh per square foot per year** ⚠️ **ESTIMATED - AUTHORITATIVE SOURCE NEEDED**
-        - This is a rough estimate based on typical MA electric resistance heating
-        - Actual usage varies significantly based on insulation, thermostat settings, and climate
+        ⚠️ **Electric heating benchmarks are rough estimates and need verification with local data**
+        """)
 
-        **Heat Pumps:**
-        - **~4 kWh per square foot per year** ⚠️ **ESTIMATED - AUTHORITATIVE SOURCE NEEDED**
-        - Assumes heat pump COP (Coefficient of Performance) of ~3.0
-        - Estimated as 1/3 of electric resistance consumption
-        - Actual performance varies with outdoor temperature
+        st.markdown("### Emission Factors")
+        st.markdown("All emission factors sourced from `emission_factors.csv`:")
 
-        ### Emission Factors
-        All emission factors sourced from `emission_factors.csv`:
+        # Emission factors table
+        emission_factors_data = pd.DataFrame({
+            'Fuel Type': ['Heating Oil', 'Propane', 'Electricity'],
+            'Emission Factor': ['0.01030 tCO2e/gal', '0.00574 tCO2e/gal', '0.000239 tCO2e/kWh'],
+            'Source Row': ['Row 8 (Diesel oil)', 'Row 5 (Propane)', 'Row 9 (NPCC New England)'],
+            'Original Units': ['kg CO2e/gal', 'kg CO2e/gal', '239 kg CO2e/MWh']
+        })
+        st.table(emission_factors_data)
 
-        - **Heating Oil**: 0.01030 tCO2e per gallon (Diesel oil, row 8)
-        - **Propane**: 0.00574 tCO2e per gallon (Propane, row 5)
-        - **Electricity**: 0.000239 tCO2e per kWh (NPCC New England grid, row 9: 239 kg CO2e/MWh)
-
-        ### Key Limitations & Uncertainties
-
-        ⚠️ **Important Caveats:**
-
-        1. **Statistical Approach**: We don't know which specific properties are seasonal, so we apply statistical averages
-        2. **Electric Heating Benchmarks**: The kWh/sq ft estimates for electric resistance and heat pumps are rough approximations and should be validated with local data
-        3. **2019 Data**: Property characteristics are from 2019 and may not reflect recent changes (renovations, fuel switching, etc.)
-        4. **Actual Usage Varies**: Individual heating consumption depends on:
-           - Building insulation quality
-           - Thermostat settings
-           - Occupant behavior
-           - Weather patterns
-           - Building orientation and solar gain
-        5. **Commercial Factors**: Commercial property adjustments are simplified and could be refined with business-specific data
-
+        st.markdown("""
         ### Calculation Formula
         For each property:
         ```
         Fuel Consumption = Square Footage × Fuel Rate (gal or kWh per sq ft) × Seasonal Adjustment Factor
         Emissions (mtCO2e) = Fuel Consumption × Emission Factor
         ```
+        """)
 
+        st.markdown("### Key Limitations & Uncertainties")
+        st.markdown("⚠️ **Important Caveats:**")
+
+        # Limitations table
+        limitations_data = pd.DataFrame({
+            'Limitation': [
+                'Statistical Approach',
+                'Electric Heating Benchmarks',
+                '2019 Data',
+                'Actual Usage Varies',
+                'Commercial Factors'
+            ],
+            'Description': [
+                'Don\'t know which specific properties are seasonal',
+                'kWh/sq ft estimates need validation with local data',
+                'May not reflect recent renovations or fuel switching',
+                'Depends on insulation, thermostats, behavior, weather, etc.',
+                'Simplified adjustments - could be refined with business data'
+            ]
+        })
+        st.table(limitations_data)
+
+        st.markdown("""
         ### Recommendations for Improvement
         - Obtain actual utility billing data if possible
         - Validate electric heating benchmarks with local energy assessors
