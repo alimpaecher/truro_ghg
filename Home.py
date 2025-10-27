@@ -425,8 +425,214 @@ if vehicles_df is not None and energy_df is not None and mass_save_data is not N
         **Overall: -181 mtCO2e (1.8% reduction) from 2019 to 2023**
         """)
 
-    # Show breakdown table
-    st.subheader("Emissions Breakdown by Year")
+    # Show breakdown by sector
+    st.subheader("Emissions by Sector")
+
+    # Calculate sector totals
+    sector_df = combined_df.copy()
+    sector_df['Transportation'] = sector_df['vehicles_tco2e']
+    sector_df['Buildings'] = (sector_df['residential_propane_mtco2e'] +
+                               sector_df['other_fuels_mtco2e'])
+    sector_df['Energy (Electricity)'] = (sector_df['residential_electric_mtco2e'] +
+                                          sector_df['commercial_electric_mtco2e'] +
+                                          sector_df['electric_mtco2e'])
+
+    # Create two columns for absolute and percentage charts
+    col_chart1, col_chart2 = st.columns(2)
+
+    with col_chart1:
+        st.markdown("#### Absolute Emissions (mtCO2e)")
+        # Create sector stacked area chart
+        fig_sectors = go.Figure()
+
+        fig_sectors.add_trace(go.Scatter(
+            x=sector_df['year'],
+            y=sector_df['Buildings'],
+            name='Buildings',
+            mode='lines',
+            line=dict(width=0),
+            stackgroup='one',
+            fillcolor='rgba(212, 81, 19, 0.6)'
+        ))
+
+        fig_sectors.add_trace(go.Scatter(
+            x=sector_df['year'],
+            y=sector_df['Energy (Electricity)'],
+            name='Energy (Electricity)',
+            mode='lines',
+            line=dict(width=0),
+            stackgroup='one',
+            fillcolor='rgba(6, 167, 125, 0.6)'
+        ))
+
+        fig_sectors.add_trace(go.Scatter(
+            x=sector_df['year'],
+            y=sector_df['Transportation'],
+            name='Transportation',
+            mode='lines',
+            line=dict(width=0),
+            stackgroup='one',
+            fillcolor='rgba(70, 130, 180, 0.6)'
+        ))
+
+        fig_sectors.update_layout(
+            xaxis_title="Year",
+            yaxis_title="mtCO2e",
+            hovermode='x unified',
+            height=400,
+            showlegend=True
+        )
+
+        st.plotly_chart(fig_sectors, use_container_width=True)
+
+    with col_chart2:
+        st.markdown("#### Percentage of Total Emissions (%)")
+        # Calculate percentages
+        sector_df['Buildings_pct'] = (sector_df['Buildings'] / sector_df['total_tco2e']) * 100
+        sector_df['Energy_pct'] = (sector_df['Energy (Electricity)'] / sector_df['total_tco2e']) * 100
+        sector_df['Transportation_pct'] = (sector_df['Transportation'] / sector_df['total_tco2e']) * 100
+
+        # Create 100% stacked area chart
+        fig_percent = go.Figure()
+
+        fig_percent.add_trace(go.Scatter(
+            x=sector_df['year'],
+            y=sector_df['Buildings_pct'],
+            name='Buildings',
+            mode='lines',
+            line=dict(width=0),
+            stackgroup='one',
+            groupnorm='percent',
+            fillcolor='rgba(212, 81, 19, 0.6)'
+        ))
+
+        fig_percent.add_trace(go.Scatter(
+            x=sector_df['year'],
+            y=sector_df['Energy_pct'],
+            name='Energy (Electricity)',
+            mode='lines',
+            line=dict(width=0),
+            stackgroup='one',
+            groupnorm='percent',
+            fillcolor='rgba(6, 167, 125, 0.6)'
+        ))
+
+        fig_percent.add_trace(go.Scatter(
+            x=sector_df['year'],
+            y=sector_df['Transportation_pct'],
+            name='Transportation',
+            mode='lines',
+            line=dict(width=0),
+            stackgroup='one',
+            groupnorm='percent',
+            fillcolor='rgba(70, 130, 180, 0.6)'
+        ))
+
+        fig_percent.update_layout(
+            xaxis_title="Year",
+            yaxis_title="Percentage (%)",
+            yaxis=dict(range=[0, 100]),
+            hovermode='x unified',
+            height=400,
+            showlegend=True
+        )
+
+        st.plotly_chart(fig_percent, use_container_width=True)
+
+    # Add animated pie chart showing composition over time
+    st.markdown("#### Sector Composition Over Time (Animated)")
+
+    # Prepare data for animated pie chart
+    years = sorted(sector_df['year'].unique())
+
+    # Create frames for animation
+    frames = []
+    for year in years:
+        year_data = sector_df[sector_df['year'] == year].iloc[0]
+        frame = go.Frame(
+            data=[go.Pie(
+                labels=['Buildings', 'Energy (Electricity)', 'Transportation'],
+                values=[year_data['Buildings'], year_data['Energy (Electricity)'], year_data['Transportation']],
+                marker=dict(colors=['rgba(212, 81, 19, 0.8)', 'rgba(6, 167, 125, 0.8)', 'rgba(70, 130, 180, 0.8)']),
+                textinfo='percent+label',
+                hovertemplate='<b>%{label}</b><br>%{value:.1f} mtCO2e<br>%{percent}<extra></extra>'
+            )],
+            name=str(int(year)),
+            layout=go.Layout(title_text=f"Year {int(year)}")
+        )
+        frames.append(frame)
+
+    # Create initial frame (first year)
+    first_year_data = sector_df[sector_df['year'] == years[0]].iloc[0]
+    fig_animated = go.Figure(
+        data=[go.Pie(
+            labels=['Buildings', 'Energy (Electricity)', 'Transportation'],
+            values=[first_year_data['Buildings'], first_year_data['Energy (Electricity)'], first_year_data['Transportation']],
+            marker=dict(colors=['rgba(212, 81, 19, 0.8)', 'rgba(6, 167, 125, 0.8)', 'rgba(70, 130, 180, 0.8)']),
+            textinfo='percent+label',
+            hovertemplate='<b>%{label}</b><br>%{value:.1f} mtCO2e<br>%{percent}<extra></extra>'
+        )],
+        frames=frames
+    )
+
+    # Add animation controls
+    fig_animated.update_layout(
+        title=f"Year {int(years[0])}",
+        height=500,
+        updatemenus=[dict(
+            type="buttons",
+            direction="left",
+            buttons=[
+                dict(label="Play",
+                     method="animate",
+                     args=[None, {"frame": {"duration": 1000, "redraw": True},
+                                  "fromcurrent": True,
+                                  "mode": "immediate",
+                                  "transition": {"duration": 300}}]),
+                dict(label="Pause",
+                     method="animate",
+                     args=[[None], {"frame": {"duration": 0, "redraw": False},
+                                    "mode": "immediate",
+                                    "transition": {"duration": 0}}])
+            ],
+            x=0.1,
+            y=0,
+            xanchor="left",
+            yanchor="top"
+        )],
+        sliders=[dict(
+            active=0,
+            steps=[dict(
+                method="animate",
+                args=[[f.name], {"frame": {"duration": 300, "redraw": True},
+                                 "mode": "immediate",
+                                 "transition": {"duration": 300}}],
+                label=f.name
+            ) for f in frames],
+            x=0.1,
+            y=0,
+            len=0.9,
+            xanchor="left",
+            yanchor="top"
+        )]
+    )
+
+    st.plotly_chart(fig_animated, use_container_width=True)
+
+    # Display sector breakdown table
+    sector_display = sector_df[['year', 'Transportation', 'Buildings', 'Energy (Electricity)', 'total_tco2e']].copy()
+    sector_display.columns = ['Year', 'Transportation (mtCO2e)', 'Buildings (mtCO2e)', 'Energy (Electricity) (mtCO2e)', 'Total (mtCO2e)']
+    st.dataframe(sector_display.sort_values('Year', ascending=False), hide_index=True)
+
+    st.markdown("""
+    **Sector Definitions:**
+    - **Transportation**: All registered vehicles (gasoline, diesel, hybrid), excluding electric vehicle home charging
+    - **Buildings**: Fossil fuel heating (residential propane, municipal buildings - oil/propane/gas)
+    - **Energy (Electricity)**: All electricity consumption (residential, commercial, municipal buildings)
+    """)
+
+    # Show detailed breakdown table
+    st.subheader("Detailed Emissions Breakdown by Year")
     display_df = combined_df[[
         'year',
         'residential_propane_mtco2e',
