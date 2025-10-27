@@ -141,6 +141,112 @@ def load_clc_heat_pump_data():
         return None
 
 
+@st.cache_data(ttl=600)
+def load_assessors_data():
+    """Load Truro Assessors data from Excel file."""
+    try:
+        # Load the assessors data from the BT_Extract sheet
+        assessors_df = pd.read_excel('data/TRURO_Assessors original_2020-12-17-2019.xls', sheet_name='BT_Extract')
+
+        return assessors_df
+
+    except Exception as e:
+        st.error(f"Error loading assessors data: {str(e)}")
+        return None
+
+
+def calculate_residential_emissions(df):
+    """
+    Calculate estimated mtCO2e emissions for residential and commercial properties.
+
+    Methodology:
+    - Excludes municipal properties (PropertyType = 'E')
+    - Applies seasonal adjustment: 67.1% seasonal (30% heating), 32.9% year-round (100%)
+    - Uses fuel consumption benchmarks from Mass.gov
+    - Applies emission factors from emission_factors.csv
+
+    WARNING: Electric heating benchmarks are estimates and need verification
+    """
+
+    # Filter to residential/commercial only (exclude municipal Type E)
+    df_calc = df[(df['PropertyType'] == 'R') & (df['NetSF'].notna()) & (df['NetSF'] > 0)].copy()
+
+    # Emission factors (from emission_factors.csv)
+    EMISSION_FACTORS = {
+        'OIL': 0.01030,      # tCO2e per gallon (Diesel oil row 8)
+        'GAS': 0.00574,      # tCO2e per gallon (Propane row 5)
+        'ELECTRIC': 0.000239  # tCO2e per kWh (Electricity row 9: 239 kg/MWh / 1000)
+    }
+
+    # Fuel consumption benchmarks (gal/sq ft or kWh/sq ft)
+    FUEL_CONSUMPTION = {
+        'OIL': 0.40,         # gal/sq ft/year (Mass.gov)
+        'GAS': 0.39,         # gal/sq ft/year (Mass.gov for propane)
+        'ELECTRIC_RESISTANCE': 12.0,  # kWh/sq ft/year (ESTIMATE - NEEDS SOURCE)
+        'HEAT_PUMP': 4.0     # kWh/sq ft/year (ESTIMATE - NEEDS SOURCE, assumes COP of 3)
+    }
+
+    # Seasonal adjustment percentages (from CLC census)
+    SEASONAL_PCT = 0.671
+    SEASONAL_HEATING_FACTOR = 0.30
+    YEARROUND_HEATING_FACTOR = 1.00
+
+    # Identify property categories
+    MOTELS_RESORTS = ['MOTELS', 'RESORT CONDO', 'INNS']
+    COMMERCIAL_TYPES = ['RESTAURANTS', 'SMALL RETAIL', 'GEN OFFICE BLDG', 'WAREHOUSE',
+                        'BANK BLDG', 'SERVICE STATION', 'FUEL SERVICE', 'MARINAS',
+                        'CAMPING FAC', 'MULTI-USE COM']
+
+    # Add classification columns
+    df_calc['is_motel_resort'] = df_calc['StateClassDesc'].isin(MOTELS_RESORTS)
+    df_calc['is_commercial'] = df_calc['StateClassDesc'].isin(COMMERCIAL_TYPES)
+    df_calc['is_residential'] = ~(df_calc['is_motel_resort'] | df_calc['is_commercial'])
+
+    # Calculate seasonal adjustment factor for each property
+    def get_seasonal_factor(row):
+        if row['is_motel_resort']:
+            return SEASONAL_HEATING_FACTOR  # 100% seasonal
+        elif row['is_commercial']:
+            # For now, use average adjustment - could be refined per your commercial factors
+            return 0.65  # Approximate average based on your commercial heating percentages
+        else:
+            # Residential: statistical split
+            return (SEASONAL_PCT * SEASONAL_HEATING_FACTOR +
+                   (1 - SEASONAL_PCT) * YEARROUND_HEATING_FACTOR)
+
+    df_calc['seasonal_factor'] = df_calc.apply(get_seasonal_factor, axis=1)
+
+    # Calculate fuel consumption and emissions
+    def calculate_emissions(row):
+        sqft = row['NetSF']
+        fuel = row['FUEL']
+        hvac = row['HVAC']
+        seasonal_adj = row['seasonal_factor']
+
+        # Determine fuel consumption
+        if fuel == 'OIL':
+            gallons = sqft * FUEL_CONSUMPTION['OIL'] * seasonal_adj
+            emissions = gallons * EMISSION_FACTORS['OIL']
+        elif fuel == 'GAS':  # Propane
+            gallons = sqft * FUEL_CONSUMPTION['GAS'] * seasonal_adj
+            emissions = gallons * EMISSION_FACTORS['GAS']
+        elif fuel == 'ELECTRIC':
+            # Check if heat pump or resistance
+            if hvac == 'HEAT PUMP':
+                kwh = sqft * FUEL_CONSUMPTION['HEAT_PUMP'] * seasonal_adj
+            else:
+                kwh = sqft * FUEL_CONSUMPTION['ELECTRIC_RESISTANCE'] * seasonal_adj
+            emissions = kwh * EMISSION_FACTORS['ELECTRIC']
+        else:
+            emissions = 0
+
+        return emissions
+
+    df_calc['mtco2e'] = df_calc.apply(calculate_emissions, axis=1)
+
+    return df_calc
+
+
 # Keep backward compatibility
 @st.cache_data(ttl=600)
 def load_data():
