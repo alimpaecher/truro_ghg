@@ -155,6 +155,44 @@ def load_assessors_data():
         return None
 
 
+@st.cache_data(ttl=600)
+def load_mass_save_data():
+    """Load Mass Save Geographic Report data for Truro."""
+    try:
+        import glob
+
+        # Find all Mass Save files
+        files = glob.glob('data/masssaveenergyusage/*.xls')
+
+        all_data = []
+        for filename in files:
+            # Extract year from filename
+            year = int(filename.split('/')[-1].split(' ')[0])
+
+            # Read the file
+            df = pd.read_excel(filename, skiprows=1)
+
+            # Filter for Truro
+            truro_data = df[(df['Town'] == 'Truro') & (df['County'] == 'Barnstable')]
+
+            # Add year column
+            truro_data['Year'] = year
+
+            all_data.append(truro_data)
+
+        # Combine all years
+        combined_df = pd.concat(all_data, ignore_index=True)
+
+        # Clean the electric usage column (remove commas, convert to float)
+        combined_df['Electric_MWh'] = combined_df['Annual  Electric  Usage (MWh)'].str.replace(',', '').astype(float)
+
+        return combined_df
+
+    except Exception as e:
+        st.error(f"Error loading Mass Save data: {str(e)}")
+        return None
+
+
 def calculate_residential_emissions(df):
     """
     Calculate estimated mtCO2e emissions for residential and commercial properties.

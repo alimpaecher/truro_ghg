@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from data_loader import load_assessors_data, calculate_residential_emissions
+from data_loader import load_assessors_data, calculate_residential_emissions, load_mass_save_data
 
 st.title("Truro Residential & Commercial Energy")
 
@@ -320,3 +320,127 @@ if df is not None:
 
     This residential/commercial estimate represents heating for ~3,000 properties vs. the handful of municipal buildings and vehicles.
     """)
+
+    # ACTUAL ENERGY USAGE DATA FROM MASS SAVE
+    st.divider()
+    st.header("Actual Energy Usage Data (Mass Save)")
+
+    mass_save_df = load_mass_save_data()
+
+    if mass_save_df is not None:
+        st.markdown("""
+        This section shows **actual electricity consumption data** from Mass Save's Geographic Report,
+        which provides real utility billing data aggregated by municipality and sector.
+
+        **Key Advantage**: Unlike the estimates above based on square footage and assumptions,
+        this data represents actual measured electricity consumption in Truro.
+        """)
+
+        # Filter to get residential and commercial sectors
+        residential_data = mass_save_df[mass_save_df['Sector'] == 'Residential & Low-Income']
+        commercial_data = mass_save_df[mass_save_df['Sector'] == 'Commercial & Industrial']
+
+        # Display latest year metrics
+        latest_year = mass_save_df['Year'].max()
+        latest_res = residential_data[residential_data['Year'] == latest_year].iloc[0]
+        latest_com = commercial_data[commercial_data['Year'] == latest_year].iloc[0]
+
+        st.subheader(f"Year {latest_year} Actual Electricity Usage")
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            res_mwh = latest_res['Electric_MWh']
+            st.metric("Residential & Low-Income", f"{res_mwh:,.0f} MWh")
+        with col2:
+            com_mwh = latest_com['Electric_MWh']
+            st.metric("Commercial & Industrial", f"{com_mwh:,.0f} MWh")
+        with col3:
+            total_mwh = res_mwh + com_mwh
+            st.metric("Total", f"{total_mwh:,.0f} MWh")
+
+        # Calculate emissions from electricity
+        ELECTRIC_EMISSION_FACTOR = 0.000239  # tCO2e per kWh
+        res_emissions = res_mwh * 1000 * ELECTRIC_EMISSION_FACTOR
+        com_emissions = com_mwh * 1000 * ELECTRIC_EMISSION_FACTOR
+        total_electric_emissions = res_emissions + com_emissions
+
+        st.subheader(f"Estimated Emissions from Electricity ({latest_year})")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Residential", f"{res_emissions:,.1f} mtCO2e")
+        with col2:
+            st.metric("Commercial", f"{com_emissions:,.1f} mtCO2e")
+        with col3:
+            st.metric("Total", f"{total_electric_emissions:,.1f} mtCO2e")
+
+        # Trend over time
+        st.subheader("Electricity Usage Trend Over Time")
+
+        # Sort by year for proper line chart
+        residential_data_sorted = residential_data.sort_values('Year')
+        commercial_data_sorted = commercial_data.sort_values('Year')
+
+        fig_mass_save = go.Figure()
+
+        fig_mass_save.add_trace(go.Scatter(
+            x=residential_data_sorted['Year'],
+            y=residential_data_sorted['Electric_MWh'],
+            name='Residential & Low-Income',
+            mode='lines+markers',
+            line=dict(width=3),
+            marker=dict(size=8)
+        ))
+
+        fig_mass_save.add_trace(go.Scatter(
+            x=commercial_data_sorted['Year'],
+            y=commercial_data_sorted['Electric_MWh'],
+            name='Commercial & Industrial',
+            mode='lines+markers',
+            line=dict(width=3),
+            marker=dict(size=8)
+        ))
+
+        fig_mass_save.update_layout(
+            xaxis_title="Year",
+            yaxis_title="Electricity Usage (MWh)",
+            hovermode='x unified',
+            height=500
+        )
+
+        st.plotly_chart(fig_mass_save, use_container_width=True)
+
+        # Data table
+        st.subheader("Electricity Usage by Year")
+
+        # Pivot data for table display
+        table_data = []
+        for year in sorted(mass_save_df['Year'].unique()):
+            year_data = mass_save_df[mass_save_df['Year'] == year]
+            res_row = year_data[year_data['Sector'] == 'Residential & Low-Income'].iloc[0]
+            com_row = year_data[year_data['Sector'] == 'Commercial & Industrial'].iloc[0]
+
+            table_data.append({
+                'Year': int(year),
+                'Residential (MWh)': f"{res_row['Electric_MWh']:,.0f}",
+                'Commercial (MWh)': f"{com_row['Electric_MWh']:,.0f}",
+                'Total (MWh)': f"{res_row['Electric_MWh'] + com_row['Electric_MWh']:,.0f}",
+                'Total Emissions (mtCO2e)': f"{(res_row['Electric_MWh'] + com_row['Electric_MWh']) * 1000 * ELECTRIC_EMISSION_FACTOR:,.1f}"
+            })
+
+        st.dataframe(pd.DataFrame(table_data), hide_index=True)
+
+        st.warning("""
+        ⚠️ **Important Notes:**
+        - This data shows **electricity usage only** (not oil, propane, or other fuels)
+        - Includes all electricity uses: heating, cooling, lighting, appliances, etc.
+        - Does not distinguish between electric resistance heating and heat pumps
+        - Mass Save data aggregates all residential/commercial properties, so we cannot break down by seasonal vs. year-round
+        - Use this data to validate or refine the electric heating estimates in the assessor-based calculations above
+        """)
+
+        # Comparison insight
+        st.info("""
+        💡 **Validation Opportunity**: Compare the actual electricity usage here with the electric heating
+        estimates in the assessor-based calculations above. Large discrepancies suggest the electric heating
+        benchmarks (~12 kWh/sq ft for resistance, ~4 kWh/sq ft for heat pumps) may need adjustment.
+        """)
