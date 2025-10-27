@@ -12,10 +12,12 @@ combining multiple data sources to tell the story of the town's energy transitio
 
 # Load all data sources
 mass_save_data = load_mass_save_data()
+fossil_fuel_tuple = calculate_total_fossil_fuel_heating()
 propane_data_tuple = calculate_propane_displacement()
 df = load_assessors_data()
 
-if mass_save_data is not None and propane_data_tuple is not None:
+if mass_save_data is not None and fossil_fuel_tuple is not None and propane_data_tuple is not None:
+    fossil_fuel_results, fossil_fuel_metadata = fossil_fuel_tuple
     propane_results, propane_metadata = propane_data_tuple
 
     # SECTION 1: OVERVIEW
@@ -35,11 +37,11 @@ if mass_save_data is not None and propane_data_tuple is not None:
     # Create figure with three lines
     fig_overview = go.Figure()
 
-    # Fossil Fuel Heating (Propane emissions)
+    # Fossil Fuel Heating (Oil + Propane emissions)
     fig_overview.add_trace(go.Scatter(
-        x=propane_results['Year'],
-        y=propane_results['Remaining_Propane_mtCO2e'],
-        name='Fossil Fuel Heating (Propane)',
+        x=fossil_fuel_results['year'],
+        y=fossil_fuel_results['total_fossil_fuel_mtco2e'],
+        name='Fossil Fuel Heating (Oil + Propane)',
         mode='lines+markers',
         line=dict(width=3, color='#D45113'),
         marker=dict(size=8),
@@ -100,7 +102,8 @@ if mass_save_data is not None and propane_data_tuple is not None:
 
     st.markdown("""
     **What the chart tells us:**
-    - Propane emissions are declining as homes convert to heat pumps
+    - Fossil fuel heating emissions (oil + propane) are declining as homes convert to heat pumps
+    - Oil heating (~5,402 mtCO2e) stays constant; propane heating decreases as properties convert
     - Residential electricity usage is increasing (heat pumps use electricity)
     - Commercial electricity usage remains relatively stable
     """)
@@ -218,19 +221,28 @@ if mass_save_data is not None and propane_data_tuple is not None:
 
     baseline_metrics = pd.DataFrame({
         'Metric': [
-            'Year-Round Residential Propane Properties',
-            'Median Property Size',
-            'Total Baseline Propane Emissions'
+            'Total Fossil Fuel Heating Emissions',
+            '  - Oil Heating',
+            '  - Propane Heating (seasonal-adjusted)',
+            'Oil Properties',
+            'Propane Properties',
+            'Tracked Propane Properties (for displacement)'
         ],
         'Value': [
-            f"{propane_metadata['baseline_propane_properties']:,} properties",
-            f"{propane_metadata['median_sqft']:,.0f} sq ft",
-            f"{propane_metadata['baseline_propane_mtco2e']:,.1f} mtCO2e/year"
+            f"{fossil_fuel_metadata['oil_emissions_baseline'] + fossil_fuel_metadata['baseline_propane_mtco2e_seasonal']:,.1f} mtCO2e/year",
+            f"{fossil_fuel_metadata['oil_emissions_baseline']:,.1f} mtCO2e/year",
+            f"{fossil_fuel_metadata['baseline_propane_mtco2e_seasonal']:,.1f} mtCO2e/year",
+            f"{fossil_fuel_metadata['oil_properties']:,} properties",
+            f"{fossil_fuel_metadata['total_propane_properties']:,} properties",
+            f"{fossil_fuel_metadata['tracked_propane_properties']:,} properties"
         ],
         'Notes': [
-            'From assessors database (excludes motels, commercial)',
-            'Used for heat pump displacement calculations',
-            'This is what we track reducing over time'
+            'Total baseline (2019)',
+            'Stays constant (not being displaced)',
+            'All 821 properties with seasonal adjustment',
+            'From assessors database',
+            'From assessors database',
+            'Year-round subset being tracked'
         ]
     })
 
@@ -363,19 +375,20 @@ if mass_save_data is not None and propane_data_tuple is not None:
         st.write("Property characteristics may have changed between 2019-2021; assessors data may have capture issues; transition period could have anomalies")
         st.caption("*Impact: Baseline propane property count or characteristics could be off, affecting all subsequent calculations*")
 
-    st.subheader("Propane Reduction Results")
+    st.subheader("Fossil Fuel Heating Reduction Results")
 
     st.markdown("""
-    By tracking heat pump installations and applying our assumptions, we can estimate how propane emissions have declined:
+    By tracking heat pump installations, we can see how total fossil fuel heating emissions have declined:
     """)
 
-    # Chart showing propane decline
-    fig_propane_decline = go.Figure()
+    # Chart showing fossil fuel decline (oil stays constant, tracked propane decreases)
+    fig_fossil_fuel_decline = go.Figure()
 
-    fig_propane_decline.add_trace(go.Scatter(
-        x=propane_results['Year'],
-        y=propane_results['Remaining_Propane_mtCO2e'],
-        name='Remaining Propane Emissions',
+    # Total fossil fuel heating (oil + all propane, with tracked propane declining)
+    fig_fossil_fuel_decline.add_trace(go.Scatter(
+        x=fossil_fuel_results['year'],
+        y=fossil_fuel_results['total_fossil_fuel_mtco2e'],
+        name='Total Fossil Fuel Heating',
         mode='lines+markers',
         line=dict(width=3, color='#D45113'),
         marker=dict(size=10),
@@ -383,7 +396,18 @@ if mass_save_data is not None and propane_data_tuple is not None:
         fillcolor='rgba(212, 81, 19, 0.2)'
     ))
 
-    fig_propane_decline.add_trace(go.Scatter(
+    # Oil (constant baseline)
+    fig_fossil_fuel_decline.add_trace(go.Scatter(
+        x=fossil_fuel_results['year'],
+        y=fossil_fuel_results['oil_mtco2e'],
+        name='Oil Heating (constant)',
+        mode='lines',
+        line=dict(width=2, color='#8B4513', dash='dash'),
+        marker=dict(size=8)
+    ))
+
+    # Tracked propane emissions saved
+    fig_fossil_fuel_decline.add_trace(go.Scatter(
         x=propane_results['Year'],
         y=propane_results['Propane_Saved_mtCO2e'],
         name='Propane Emissions Eliminated',
@@ -392,7 +416,7 @@ if mass_save_data is not None and propane_data_tuple is not None:
         marker=dict(size=10)
     ))
 
-    fig_propane_decline.update_layout(
+    fig_fossil_fuel_decline.update_layout(
         xaxis_title="Year",
         yaxis_title="Emissions (mtCO2e)",
         yaxis=dict(rangemode='tozero'),
@@ -407,43 +431,41 @@ if mass_save_data is not None and propane_data_tuple is not None:
         )
     )
 
-    st.plotly_chart(fig_propane_decline, use_container_width=True)
+    st.plotly_chart(fig_fossil_fuel_decline, use_container_width=True)
 
     # Year-by-year table
     st.markdown("**Year-by-Year Breakdown:**")
 
-    table_display = propane_results.copy()
-    table_display = table_display[[
-        'Year', 'Heat_Pump_Locations', 'Cumulative_Conversions',
-        'Remaining_Propane_mtCO2e', 'Propane_Saved_mtCO2e', 'Percent_Reduction'
-    ]]
+    # Use data from the consolidated fossil fuel function
+    table_display = fossil_fuel_results.copy()
 
-    table_display['Year'] = table_display['Year'].astype(int)
-    table_display['Heat_Pump_Locations'] = table_display['Heat_Pump_Locations'].astype(int)
-    table_display['Cumulative_Conversions'] = table_display['Cumulative_Conversions'].astype(int)
-    table_display['Remaining_Propane_mtCO2e'] = table_display['Remaining_Propane_mtCO2e'].apply(lambda x: f"{x:,.1f}")
-    table_display['Propane_Saved_mtCO2e'] = table_display['Propane_Saved_mtCO2e'].apply(lambda x: f"{x:,.1f}")
-    table_display['Percent_Reduction'] = table_display['Percent_Reduction'].apply(lambda x: f"{x:.1f}%")
+    # Calculate percent reduction from 2019 baseline
+    baseline_2019 = fossil_fuel_results[fossil_fuel_results['year'] == 2019]['total_fossil_fuel_mtco2e'].iloc[0]
+    table_display['Percent_Reduction'] = ((baseline_2019 - table_display['total_fossil_fuel_mtco2e']) / baseline_2019 * 100)
 
-    table_display.columns = [
-        'Year',
-        'Total Heat Pumps',
-        'Conversions from 2019',
-        'Remaining Emissions (mtCO2e)',
-        'Emissions Eliminated (mtCO2e)',
-        '% Reduction'
-    ]
+    # Select and format display columns
+    table_display_formatted = pd.DataFrame({
+        'Year': table_display['year'].astype(int),
+        'Total Heat Pumps': table_display['heat_pump_locations'].astype(int),
+        'Conversions from 2019': table_display['cumulative_conversions'].astype(int),
+        'Oil (constant)': table_display['oil_mtco2e'].apply(lambda x: f"{x:,.1f}"),
+        'Propane (remaining)': table_display['propane_mtco2e'].apply(lambda x: f"{x:,.1f}"),
+        'Total Fossil Fuel': table_display['total_fossil_fuel_mtco2e'].apply(lambda x: f"{x:,.1f}"),
+        'Emissions Eliminated': table_display['propane_mtco2e_eliminated'].apply(lambda x: f"{x:,.1f}"),
+        '% Reduction': table_display['Percent_Reduction'].apply(lambda x: f"{x:.1f}%")
+    })
 
-    st.dataframe(table_display, hide_index=True, use_container_width=True)
+    st.dataframe(table_display_formatted, hide_index=True, use_container_width=True)
 
     # Summary
-    latest_year_data = propane_results.iloc[-1]
+    latest_year_data = fossil_fuel_results.iloc[-1]
 
     st.success(f"""
-    📊 **Bottom Line ({int(latest_year_data['Year'])})**:
-    - **{int(latest_year_data['Cumulative_Conversions'])} properties** have converted from propane to heat pumps since 2019
-    - **{latest_year_data['Propane_Saved_mtCO2e']:.1f} mtCO2e** in propane emissions eliminated annually
-    - This represents a **{latest_year_data['Percent_Reduction']:.1f}% reduction** from the 2019 baseline
+    📊 **Bottom Line (2023)**:
+    - **{int(latest_year_data['cumulative_conversions'])} properties** have converted from propane to heat pumps since 2019
+    - **{latest_year_data['propane_mtco2e_eliminated']:.1f} mtCO2e** in propane emissions eliminated annually
+    - **Total fossil fuel heating: {latest_year_data['total_fossil_fuel_mtco2e']:,.1f} mtCO2e** (down from {baseline_2019:,.1f} mtCO2e in 2019)
+    - This represents a **{((baseline_2019 - latest_year_data['total_fossil_fuel_mtco2e']) / baseline_2019 * 100):.1f}% reduction** in total fossil fuel heating emissions
     """)
 
     st.divider()

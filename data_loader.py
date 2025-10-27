@@ -431,103 +431,137 @@ def calculate_propane_displacement():
 @st.cache_data(ttl=600)
 def calculate_total_fossil_fuel_heating():
     """
-    Calculate total fossil fuel heating emissions (oil + propane) for residential/commercial buildings.
-    Returns baseline emissions and time series with heat pump displacement applied.
+    SINGLE SOURCE OF TRUTH for all fossil fuel heating calculations.
 
-    This gives us the TOTAL fossil fuel picture:
-    - Oil heating (not being displaced, stays constant)
-    - Propane heating (being displaced by heat pumps over time)
+    Calculates total fossil fuel heating emissions (oil + propane) with heat pump displacement.
+
+    BASELINE (2019) - with seasonal adjustment (67.1% seasonal, 32.9% year-round):
+    - Oil: ~5,402.4 mtCO2e (constant, not being displaced)
+    - All Propane: ~2,106.3 mtCO2e (821 properties, seasonal-adjusted)
+    - TOTAL: ~7,508.7 mtCO2e
+
+    DISPLACEMENT: As heat pumps installed, propane decreases (assumes year-round equivalent for conversions)
     """
 
     assessors_df = load_assessors_data()
-    if assessors_df is None:
-        return None
+    heat_pump_df = load_clc_heat_pump_data()
 
-    # Get propane displacement data
-    propane_displacement_tuple = calculate_propane_displacement()
-    if propane_displacement_tuple is None:
+    if assessors_df is None or heat_pump_df is None:
         return None
-
-    propane_results, propane_metadata = propane_displacement_tuple
 
     # Filter to residential/commercial only (exclude municipal Type E)
     df_calc = assessors_df[(assessors_df['PropertyType'] == 'R') &
                            (assessors_df['NetSF'].notna()) &
                            (assessors_df['NetSF'] > 0)].copy()
 
-    # Emission factors and consumption rates
+    # Constants
     OIL_CONSUMPTION = 0.40  # gal/sq ft/year
+    PROPANE_CONSUMPTION = 0.39  # gal/sq ft/year
     OIL_EMISSION_FACTOR = 0.01030  # tCO2e per gallon
+    PROPANE_EMISSION_FACTOR = 0.00574  # tCO2e per gallon
 
-    # Seasonal adjustment (from CLC census data)
+    # Seasonal adjustment
     SEASONAL_PCT = 0.671
     SEASONAL_HEATING_FACTOR = 0.30
     YEARROUND_HEATING_FACTOR = 1.00
-
-    # Calculate average seasonal adjustment for residential properties
-    # (weighted average: 67.1% seasonal at 30%, 32.9% year-round at 100%)
     avg_seasonal_factor = (SEASONAL_PCT * SEASONAL_HEATING_FACTOR +
                           (1 - SEASONAL_PCT) * YEARROUND_HEATING_FACTOR)
 
-    # Calculate OIL heating emissions (these stay constant - not being displaced)
+    # Oil (constant)
     oil_properties = df_calc[df_calc['FUEL'] == 'OIL'].copy()
     oil_sqft_total = oil_properties['NetSF'].sum()
+    # Expected baseline (2019): ~5,402.4 mtCO2e
     oil_emissions_mtco2e = oil_sqft_total * OIL_CONSUMPTION * avg_seasonal_factor * OIL_EMISSION_FACTOR
 
-    # For propane, we have the displacement calculation already
-    # The propane_results dataframe has Remaining_Propane_mtCO2e which already accounts for
-    # the 801 year-round residential propane properties being displaced
-
-    # However, we need to add OTHER propane that's NOT being tracked for displacement
-    # (seasonal homes, commercial, etc.)
+    # All propane with seasonal adjustment
     all_propane_properties = df_calc[df_calc['FUEL'] == 'GAS'].copy()
-    tracked_propane_count = propane_metadata['baseline_propane_properties']  # 801 tracked
-    total_propane_count = len(all_propane_properties)  # Should be ~821
+    total_propane_count = len(all_propane_properties)
+    propane_total_sqft = all_propane_properties['NetSF'].sum()
+    # Expected baseline (2019): ~2,106.3 mtCO2e
+    baseline_propane_mtco2e_seasonal = propane_total_sqft * PROPANE_CONSUMPTION * avg_seasonal_factor * PROPANE_EMISSION_FACTOR
 
-    # Calculate emissions from OTHER propane (not tracked for displacement)
-    # These are commercial, seasonal, etc. that aren't part of the heat pump program
-    other_propane_properties = total_propane_count - tracked_propane_count
+    # Tracked propane for heat pump displacement (year-round subset)
+    MOTELS_RESORTS = ['MOTELS', 'RESORT CONDO', 'INNS']
+    COMMERCIAL_TYPES = ['RESTAURANTS', 'SMALL RETAIL', 'GEN OFFICE BLDG', 'WAREHOUSE',
+                        'BANK BLDG', 'SERVICE STATION', 'FUEL SERVICE', 'MARINAS',
+                        'CAMPING FAC', 'MULTI-USE COM']
 
-    if other_propane_properties > 0:
-        # Use median sqft from all propane properties for the "other" category
-        median_propane_sqft = all_propane_properties['NetSF'].median()
-        PROPANE_CONSUMPTION = 0.39  # gal/sq ft/year
-        PROPANE_EMISSION_FACTOR = 0.00574  # tCO2e per gallon
+    tracked_propane_properties = all_propane_properties[
+        (~all_propane_properties['StateClassDesc'].isin(MOTELS_RESORTS)) &
+        (~all_propane_properties['StateClassDesc'].isin(COMMERCIAL_TYPES))
+    ].copy()
 
-        # Assume seasonal adjustment for "other" propane
-        other_propane_gal_per_property = median_propane_sqft * PROPANE_CONSUMPTION * avg_seasonal_factor
-        other_propane_mtco2e_per_property = other_propane_gal_per_property * PROPANE_EMISSION_FACTOR
-        other_propane_total_mtco2e = other_propane_properties * other_propane_mtco2e_per_property
-    else:
-        other_propane_total_mtco2e = 0
+    tracked_propane_count = len(tracked_propane_properties)
+    tracked_propane_median_sqft = tracked_propane_properties['NetSF'].median()
+
+    # For displacement: assume tracked properties are 100% year-round
+    propane_per_property_gal_yearround = tracked_propane_median_sqft * PROPANE_CONSUMPTION * 1.00
+    propane_per_property_mtco2e_yearround = propane_per_property_gal_yearround * PROPANE_EMISSION_FACTOR
+
+    # Heat pump tracking
+    baseline_heat_pumps_2019 = len(assessors_df[assessors_df['HVAC'].str.contains('HEAT PUMP', case=False, na=False)])
+    heat_pump_df_sorted = heat_pump_df.sort_values('Year')
+    first_clc_year = int(heat_pump_df_sorted.iloc[0]['Year'])
+    first_clc_locations = int(heat_pump_df_sorted.iloc[0]['Installed Heat Pumps Location'])
+    interpolated_2020_locations = int((baseline_heat_pumps_2019 + first_clc_locations) / 2)
 
     # Build time series
     results = []
-    for idx, row in propane_results.iterrows():
-        year = int(row['Year'])
-        tracked_propane_mtco2e = row['Remaining_Propane_mtCO2e']
 
-        total_fossil_fuel = oil_emissions_mtco2e + tracked_propane_mtco2e + other_propane_total_mtco2e
+    # 2019
+    results.append({
+        'year': 2019,
+        'heat_pump_locations': baseline_heat_pumps_2019,
+        'cumulative_conversions': 0,
+        'oil_mtco2e': oil_emissions_mtco2e,
+        'propane_mtco2e': baseline_propane_mtco2e_seasonal,
+        'propane_mtco2e_eliminated': 0,
+        'total_fossil_fuel_mtco2e': oil_emissions_mtco2e + baseline_propane_mtco2e_seasonal
+    })
+
+    # 2020
+    conversions_2020 = interpolated_2020_locations - baseline_heat_pumps_2019
+    propane_eliminated_2020 = conversions_2020 * propane_per_property_mtco2e_yearround
+    results.append({
+        'year': 2020,
+        'heat_pump_locations': interpolated_2020_locations,
+        'cumulative_conversions': conversions_2020,
+        'oil_mtco2e': oil_emissions_mtco2e,
+        'propane_mtco2e': baseline_propane_mtco2e_seasonal - propane_eliminated_2020,
+        'propane_mtco2e_eliminated': propane_eliminated_2020,
+        'total_fossil_fuel_mtco2e': oil_emissions_mtco2e + (baseline_propane_mtco2e_seasonal - propane_eliminated_2020)
+    })
+
+    # 2021-2023
+    for idx, row in heat_pump_df_sorted.iterrows():
+        year = int(row['Year'])
+        locations = int(row['Installed Heat Pumps Location'])
+        conversions = locations - baseline_heat_pumps_2019
+        propane_eliminated = conversions * propane_per_property_mtco2e_yearround
+        propane_remaining = baseline_propane_mtco2e_seasonal - propane_eliminated
 
         results.append({
             'year': year,
+            'heat_pump_locations': locations,
+            'cumulative_conversions': conversions,
             'oil_mtco2e': oil_emissions_mtco2e,
-            'tracked_propane_mtco2e': tracked_propane_mtco2e,
-            'other_propane_mtco2e': other_propane_total_mtco2e,
-            'total_fossil_fuel_mtco2e': total_fossil_fuel
+            'propane_mtco2e': propane_remaining,
+            'propane_mtco2e_eliminated': propane_eliminated,
+            'total_fossil_fuel_mtco2e': oil_emissions_mtco2e + propane_remaining
         })
 
     results_df = pd.DataFrame(results)
 
-    # Add metadata
+    # Metadata
     metadata = {
         'oil_properties': len(oil_properties),
-        'oil_sqft_total': oil_sqft_total,
         'oil_emissions_baseline': oil_emissions_mtco2e,
+        'total_propane_properties': total_propane_count,
+        'baseline_propane_mtco2e_seasonal': baseline_propane_mtco2e_seasonal,
         'tracked_propane_properties': tracked_propane_count,
-        'other_propane_properties': other_propane_properties,
-        'other_propane_emissions': other_propane_total_mtco2e,
-        'total_propane_properties': total_propane_count
+        'tracked_propane_median_sqft': tracked_propane_median_sqft,
+        'propane_per_property_mtco2e_yearround': propane_per_property_mtco2e_yearround,
+        'avg_seasonal_factor': avg_seasonal_factor
     }
 
     return results_df, metadata
