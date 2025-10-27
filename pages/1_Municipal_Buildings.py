@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from data_loader import load_energy_data
 
-st.title("Municipal Energy Data")
+st.title("Municipal Buildings: Heating & Energy")
 
 # Load the data
 df = load_energy_data()

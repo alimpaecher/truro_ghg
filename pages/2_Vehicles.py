@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from data_loader import load_data
 
-st.title("Town of Truro Vehicle Data")
+st.title("Vehicles: Registration & Emissions")
 
 # Load the data
 df = load_data()

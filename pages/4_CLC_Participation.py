@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from data_loader import load_clc_participation_data, load_clc_census_data, load_clc_heat_pump_data
 
-st.title("CLC Participation Data")
+st.title("Cape Light Compact: Participation & Heat Pump Adoption")
 
 # Data collection notes
 with st.expander("ℹ️ Data Collection Notes"):

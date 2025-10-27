@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from data_loader import load_assessors_data, calculate_residential_emissions, load_mass_save_data, calculate_propane_displacement
 
-st.title("Truro Residential & Commercial Energy")
+st.title("Residential & Commercial Buildings: Heating & Energy")
 
 st.markdown("""
 This page explains how we track energy use and emissions from residential and commercial buildings in Truro,
