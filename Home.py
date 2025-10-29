@@ -18,6 +18,14 @@ energy_df = load_energy_data()
 mass_save_data = load_mass_save_data()
 fossil_fuel_data_tuple = calculate_total_fossil_fuel_heating()
 
+# Load population data
+population_df = pd.read_csv('data/truro-population.csv')
+population_df['Population'] = population_df['Population'].str.replace(',', '').astype(int)
+# Add 2024 with same population as 2023
+population_2023 = population_df[population_df['Year'] == 2023]['Population'].values[0]
+population_2024 = pd.DataFrame({'Year': [2024], 'Population': [population_2023]})
+population_df = pd.concat([population_df, population_2024], ignore_index=True)
+
 if vehicles_df is not None and energy_df is not None and mass_save_data is not None and fossil_fuel_data_tuple is not None:
     st.success("Successfully loaded data from all sources")
 
@@ -128,6 +136,10 @@ if vehicles_df is not None and energy_df is not None and mass_save_data is not N
                                    combined_df['residential_fossil_fuel_mtco2e'] +
                                    combined_df['residential_electric_mtco2e'] +
                                    combined_df['commercial_electric_mtco2e'])
+
+    # Merge population data
+    combined_df = pd.merge(combined_df, population_df[['Year', 'Population']], left_on='year', right_on='Year', how='left')
+    combined_df = combined_df.drop('Year', axis=1)
 
     # Display current year metrics
     most_recent_year = combined_df['year'].max()
@@ -402,6 +414,43 @@ if vehicles_df is not None and energy_df is not None and mass_save_data is not N
 
     st.markdown("---")
 
+    # Population growth chart
+    st.subheader("Truro Population Growth (2019-2023)")
+
+    pop_2019 = data_2019['Population']
+    pop_2023 = data_2023['Population']
+    pop_change = pop_2023 - pop_2019
+    pop_change_pct = (pop_change / pop_2019) * 100
+
+    fig_population = go.Figure()
+    fig_population.add_trace(go.Scatter(
+        x=combined_df['year'],
+        y=combined_df['Population'],
+        mode='lines+markers',
+        line=dict(width=3, color='rgb(99, 110, 250)'),
+        marker=dict(size=10),
+        name='Population'
+    ))
+
+    fig_population.update_layout(
+        xaxis_title="Year",
+        yaxis_title="Population",
+        hovermode='x unified',
+        height=400,
+        showlegend=False
+    )
+
+    st.plotly_chart(fig_population, use_container_width=True)
+
+    st.markdown(f"""
+    Truro's population grew from **{int(pop_2019):,}** in 2019 to **{int(pop_2023):,}** in 2023,
+    an increase of **{int(pop_change):,} residents ({pop_change_pct:.1f}%)**. This significant growth,
+    largely driven by increased full-time occupancy during and after COVID, likely contributes to increased
+    vehicle registrations and electricity usage.
+    """)
+
+    st.markdown("---")
+
     # Simplified narrative
     col_a, col_b = st.columns(2)
 
@@ -418,7 +467,7 @@ if vehicles_df is not None and energy_df is not None and mass_save_data is not N
         st.markdown(f"""
         **Residential fossil fuel heating dropped {heating_pct:.1f}%** ({residential_heating_change:.0f} mtCO2e), reflecting the conversion of **{int(conversions_2023)} properties** to heat pumps through the Cape Light Compact program.
 
-        **Residential electricity increased {electric_pct:.1f}%** ({residential_electric_change:+.0f} mtCO2e). The largest jump occurred in 2019-2020, which seems unlikely to be primarily from heat pump adoption given the gradual conversion timeline. This may reflect increased full-time occupancy during COVID, though this is unclear.
+        **Residential electricity increased {electric_pct:.1f}%** ({residential_electric_change:+.0f} mtCO2e). The largest jump occurred in 2019-2020, which seems unlikely to be primarily from heat pump adoption given the gradual conversion timeline. This may reflect increased full-time occupancy during COVID.
 
         **Net residential benefit: {net_residential:.0f} mtCO2e**
         """)
@@ -430,7 +479,7 @@ if vehicles_df is not None and energy_df is not None and mass_save_data is not N
     with col_b:
         st.markdown("### ⚠️ Challenge: Vehicle Emissions")
         st.markdown(f"""
-        **Vehicle emissions increased {vehicle_pct:.1f}%** ({vehicles_change:+.0f} tCO2e). This reflects more vehicles on the road, without sufficient adoption of electric vehicles.
+        **Vehicle emissions increased {vehicle_pct:.1f}%** ({vehicles_change:+.0f} tCO2e). This reflects more vehicles on the road as population grew {pop_change_pct:.1f}%, without sufficient adoption of electric vehicles.
 
         **Municipal buildings and commercial electricity remained relatively steady**, with minor reductions.
 
