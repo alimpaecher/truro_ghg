@@ -169,6 +169,10 @@ def get_emission_factor(fuel_type, year=None):
     For electricity in future years, applies grid decarbonization based on clean energy goals.
     For fossil fuels and historical electricity, returns the constant base emission factor.
 
+    IMPORTANT: The base electricity emission factor (0.000239 tCO2e/kWh) reflects the grid mix
+    as of ~2020 (54% clean). We only apply additional decarbonization for improvements beyond
+    this baseline to avoid double-counting.
+
     Args:
         fuel_type (str): Fuel type (see get_base_emission_factor for options)
         year (int, optional): Year for the emission factor. Defaults to None (current/historical).
@@ -182,6 +186,7 @@ def get_emission_factor(fuel_type, year=None):
         >>> get_emission_factor('GASOLINE')  # Returns 0.00882
         >>> get_emission_factor('ELECTRIC')  # Returns 0.000239 (no year = historical)
         >>> get_emission_factor('ELECTRIC', 2024)  # Returns 0.000239 (historical)
+        >>> get_emission_factor('ELECTRIC', 2030)  # Returns ~0.000102 (70% clean vs 54% baseline)
         >>> get_emission_factor('ELECTRIC', 2050)  # Returns ~0 (100% clean grid)
     """
     base_factor = get_base_emission_factor(fuel_type)
@@ -189,13 +194,24 @@ def get_emission_factor(fuel_type, year=None):
     # Only apply grid decarbonization to electricity for FUTURE years (> 2024)
     if fuel_type.upper() in ['ELECTRIC', 'ELECTRICITY'] and year is not None and year > 2024:
         # Get clean energy percentage for this year
-        clean_pct = get_grid_clean_energy_percent(year)
+        clean_pct_future = get_grid_clean_energy_percent(year)
 
-        # Remaining fossil fuel percentage
-        fossil_pct = 1.0 - clean_pct
+        # Baseline clean energy percentage (when base factor was measured, ~2020)
+        clean_pct_baseline = get_grid_clean_energy_percent(2020)
 
-        # Adjusted emission factor (only fossil portion emits)
-        return base_factor * fossil_pct
+        # Calculate the ratio of fossil fuel percentage
+        # If baseline was 54% clean (46% fossil), and future is 70% clean (30% fossil),
+        # then emissions should be 30/46 = 65% of baseline
+        fossil_pct_baseline = 1.0 - clean_pct_baseline
+        fossil_pct_future = 1.0 - clean_pct_future
+
+        if fossil_pct_baseline > 0:
+            decarbonization_ratio = fossil_pct_future / fossil_pct_baseline
+        else:
+            decarbonization_ratio = 0.0  # Grid was already 100% clean at baseline
+
+        # Adjusted emission factor based on grid improvement
+        return base_factor * decarbonization_ratio
 
     # For all other fuels and historical electricity, return base factor unchanged
     return base_factor

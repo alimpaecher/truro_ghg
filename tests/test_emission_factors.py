@@ -126,17 +126,21 @@ class TestEmissionFactorWithYear:
     def test_electric_2025_future(self):
         """Test electric factor for 2025 (future, with decarbonization)."""
         factor = emission_factors.get_emission_factor('ELECTRIC', 2025)
-        # 2025 is 53% clean, so 47% fossil
-        # 0.000239 * 0.47 = 0.000112
-        expected = 0.000239 * 0.47
+        # Baseline (2020): 54% clean, 46% fossil
+        # 2025: 53% clean, 47% fossil
+        # Ratio: 47% / 46% = 1.022
+        # 0.000239 * 1.022 = 0.000244
+        expected = 0.000239 * (0.47 / 0.46)
         assert abs(factor - expected) < 0.000001, f"2025 factor: {factor}"
 
     def test_electric_2030_projection(self):
         """Test electric factor for 2030 (70% clean grid)."""
         factor = emission_factors.get_emission_factor('ELECTRIC', 2030)
-        # 2030 is 70% clean, so 30% fossil
-        # 0.000239 * 0.30 = 0.0000717
-        expected = 0.000239 * 0.30
+        # Baseline (2020): 54% clean, 46% fossil
+        # 2030: 70% clean, 30% fossil
+        # Ratio: 30% / 46% = 0.652
+        # 0.000239 * 0.652 = 0.000156
+        expected = 0.000239 * (0.30 / 0.46)
         assert abs(factor - expected) < 0.000001, f"2030 factor: {factor}"
 
     def test_electric_2050_net_zero(self):

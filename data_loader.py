@@ -1,6 +1,7 @@
 """Helper functions for loading vehicle data from local CSV files."""
 import pandas as pd
 import streamlit as st
+import emission_factors
 
 
 @st.cache_data(ttl=600)
@@ -16,13 +17,10 @@ def load_vehicle_data():
         # Load emission factors
         emission_factors_df = pd.read_csv('data/emission_factors.csv')
 
-        # Extract emission factors from the CSV
-        # Gasoline: 0.00882 tCO2e per gallon (Motor gasoline row)
-        # Diesel: 0.01030 tCO2e per gallon
-        # Electricity: 0.000239 tCO2e per kWh (239.3333 kg/MWh / 1000)
-        gal_emission_factor = 0.00882
-        diesel_emission_factor = 0.01030
-        kwh_emission_factor = 0.000239
+        # Get emission factors from centralized module
+        gal_emission_factor = emission_factors.get_emission_factor('GASOLINE')
+        diesel_emission_factor = emission_factors.get_emission_factor('DIESEL')
+        kwh_emission_factor = emission_factors.get_emission_factor('ELECTRIC')
 
         # Calculate tCO2e per vehicle for each type
         tco2e_per_vehicle = {}
@@ -209,11 +207,11 @@ def calculate_residential_emissions(df):
     # Filter to residential/commercial only (exclude municipal Type E)
     df_calc = df[(df['PropertyType'] == 'R') & (df['NetSF'].notna()) & (df['NetSF'] > 0)].copy()
 
-    # Emission factors (from emission_factors.csv)
+    # Get emission factors from centralized module
     EMISSION_FACTORS = {
-        'OIL': 0.01030,      # tCO2e per gallon (Diesel oil row 8)
-        'GAS': 0.00574,      # tCO2e per gallon (Propane row 5)
-        'ELECTRIC': 0.000239  # tCO2e per kWh (Electricity row 9: 239 kg/MWh / 1000)
+        'OIL': emission_factors.get_emission_factor('OIL'),
+        'GAS': emission_factors.get_emission_factor('PROPANE'),
+        'ELECTRIC': emission_factors.get_emission_factor('ELECTRIC')
     }
 
     # Fuel consumption benchmarks (gal/sq ft or kWh/sq ft)
@@ -328,7 +326,7 @@ def calculate_propane_displacement():
 
     # Baseline propane consumption per property (year-round, 100% heating)
     PROPANE_CONSUMPTION = 0.39  # gal/sq ft/year
-    PROPANE_EMISSION_FACTOR = 0.00574  # tCO2e per gallon
+    PROPANE_EMISSION_FACTOR = emission_factors.get_emission_factor('PROPANE')
 
     propane_per_property_gal = median_sqft * PROPANE_CONSUMPTION * 1.00  # year-round
     propane_per_property_mtco2e = propane_per_property_gal * PROPANE_EMISSION_FACTOR
@@ -457,8 +455,8 @@ def calculate_total_fossil_fuel_heating():
     # Constants
     OIL_CONSUMPTION = 0.40  # gal/sq ft/year
     PROPANE_CONSUMPTION = 0.39  # gal/sq ft/year
-    OIL_EMISSION_FACTOR = 0.01030  # tCO2e per gallon
-    PROPANE_EMISSION_FACTOR = 0.00574  # tCO2e per gallon
+    OIL_EMISSION_FACTOR = emission_factors.get_emission_factor('OIL')
+    PROPANE_EMISSION_FACTOR = emission_factors.get_emission_factor('PROPANE')
 
     # Seasonal adjustment
     SEASONAL_PCT = 0.671

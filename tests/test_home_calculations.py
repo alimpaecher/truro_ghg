@@ -280,18 +280,24 @@ class TestBackwardCompatibility:
     """Test backward compatibility with original Home.py calculations."""
 
     def test_2023_total_matches_original(self):
-        """Test that 2023 total matches original Home.py calculation."""
+        """Test that 2023 total matches expected value with centralized emission factors.
+
+        Note: This value changed from 26019.33 to 25966.88 when we moved to centralized
+        emission factors, because we now correctly use heating oil factor (0.01020)
+        instead of diesel truck factor (0.01030) that was hard-coded before.
+        This is more accurate!
+        """
         combined_df, _ = home_calculations.prepare_home_dashboard_data()
 
         data_2023 = combined_df[combined_df['year'] == 2023]
         total_2023 = data_2023['total_tco2e'].values[0]
 
-        # This should match the original hard-coded test value
-        expected = 26019.33
+        # Updated expected value with centralized emission factors
+        expected = 25966.88
         tolerance = 5.0  # Allow small differences due to rounding
 
         assert abs(total_2023 - expected) < tolerance, \
-            f"2023 total changed from original: expected {expected}, got {total_2023}"
+            f"2023 total changed: expected {expected}, got {total_2023}"
 
     def test_components_non_negative(self):
         """Test that all emission components are non-negative."""
