@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from data_loader import load_vehicle_data, load_energy_data, load_mass_save_data, calculate_total_fossil_fuel_heating
+from home_calculations import prepare_home_dashboard_data
+from data_loader import calculate_total_fossil_fuel_heating
 
 # Page configuration
 st.set_page_config(
@@ -12,134 +13,15 @@ st.set_page_config(
 
 st.title("Town of Truro GHG Emissions Dashboard")
 
-# Load all datasets
-vehicles_df = load_vehicle_data()
-energy_df = load_energy_data()
-mass_save_data = load_mass_save_data()
-fossil_fuel_data_tuple = calculate_total_fossil_fuel_heating()
+# Load and prepare all data using the calculation module
+try:
+    combined_df, metadata = prepare_home_dashboard_data()
 
-# Load population data
-population_df = pd.read_csv('data/truro-population.csv')
-population_df['Population'] = population_df['Population'].str.replace(',', '').astype(int)
-# Add 2024 with same population as 2023
-population_2023 = population_df[population_df['Year'] == 2023]['Population'].values[0]
-population_2024 = pd.DataFrame({'Year': [2024], 'Population': [population_2023]})
-population_df = pd.concat([population_df, population_2024], ignore_index=True)
-
-if vehicles_df is not None and energy_df is not None and mass_save_data is not None and fossil_fuel_data_tuple is not None:
-    st.success("Successfully loaded data from all sources")
-
+    # Also load fossil fuel results for the narrative section
+    fossil_fuel_data_tuple = calculate_total_fossil_fuel_heating()
     fossil_fuel_results, fossil_fuel_metadata = fossil_fuel_data_tuple
 
-    # Process vehicles data
-    # Convert Quarter to datetime
-    vehicles_df['Quarter_Date'] = pd.to_datetime(vehicles_df['Quarter'])
-
-    # Filter to only January quarters (Q1 of each year represents the previous year's final number)
-    vehicles_df['Month'] = vehicles_df['Quarter_Date'].dt.month
-    vehicles_q1 = vehicles_df[vehicles_df['Month'] == 1].copy()
-
-    # Extract year and use previous year as the calendar year
-    vehicles_q1['year'] = vehicles_q1['Quarter_Date'].dt.year - 1
-
-    # Exclude Battery Electric vehicles and adjust Plug-in Hybrid to avoid double counting with residential electricity
-    # Battery Electric: 100% of emissions already counted in residential electricity (home charging)
-    # Plug-in Hybrid: ~50% electric (already counted), ~50% gas (keep in vehicle total)
-    # Hybrid Electric: Self-charging, no home electricity use, keep 100%
-
-    # Filter out Battery Electric entirely
-    vehicles_q1_adjusted = vehicles_q1[vehicles_q1['Type'] != 'Battery Electric'].copy()
-
-    # For Plug-in Hybrid, reduce emissions by 50% (assume half from home charging, half from gasoline)
-    vehicles_q1_adjusted.loc[vehicles_q1_adjusted['Type'] == 'Plug-in Hybrid', 'tCo2e'] *= 0.5
-
-    # Sum tCO2e by year for vehicles (excluding electric vehicle home charging)
-    vehicles_yearly = vehicles_q1_adjusted.groupby('year')['tCo2e'].sum().reset_index()
-    vehicles_yearly.columns = ['year', 'vehicles_tco2e']
-
-    # Process energy data
-    # Filter out incomplete 2025 data
-    energy_df = energy_df[energy_df['fiscal_year'] < 2025]
-
-    # Separate electric from other fuels
-    energy_electric = energy_df[energy_df['account_fuel'] == 'Electric'].groupby('fiscal_year')['mtco2e'].sum().reset_index()
-    energy_electric.columns = ['year', 'electric_mtco2e']
-
-    energy_other = energy_df[energy_df['account_fuel'] != 'Electric'].groupby('fiscal_year')['mtco2e'].sum().reset_index()
-    energy_other.columns = ['year', 'other_fuels_mtco2e']
-
-    # Sum mtCO2e by year for total municipal buildings
-    energy_yearly = energy_df.groupby('fiscal_year')['mtco2e'].sum().reset_index()
-    energy_yearly.columns = ['year', 'municipal_buildings_mtco2e']
-
-    # Process residential/commercial energy data
-    # Total fossil fuel heating emissions (oil + propane with heat pump displacement)
-    fossil_fuel_yearly = fossil_fuel_results[['year', 'total_fossil_fuel_mtco2e']].copy()
-    fossil_fuel_yearly.columns = ['year', 'residential_fossil_fuel_mtco2e']
-    fossil_fuel_yearly['year'] = fossil_fuel_yearly['year'].astype(int)
-
-    # Residential electricity emissions
-    ELECTRIC_EMISSION_FACTOR = 0.000239  # tCO2e per kWh
-    residential_electric = mass_save_data[mass_save_data['Sector'] == 'Residential & Low-Income'].copy()
-    residential_electric['residential_electric_mtco2e'] = residential_electric['Electric_MWh'] * 1000 * ELECTRIC_EMISSION_FACTOR
-    residential_electric_yearly = residential_electric[['Year', 'residential_electric_mtco2e']].copy()
-    residential_electric_yearly.columns = ['year', 'residential_electric_mtco2e']
-    residential_electric_yearly['year'] = residential_electric_yearly['year'].astype(int)
-
-    # Commercial electricity emissions
-    commercial_electric = mass_save_data[mass_save_data['Sector'] == 'Commercial & Industrial'].copy()
-    commercial_electric['commercial_electric_mtco2e'] = commercial_electric['Electric_MWh'] * 1000 * ELECTRIC_EMISSION_FACTOR
-    commercial_electric_yearly = commercial_electric[['Year', 'commercial_electric_mtco2e']].copy()
-    commercial_electric_yearly.columns = ['year', 'commercial_electric_mtco2e']
-    commercial_electric_yearly['year'] = commercial_electric_yearly['year'].astype(int)
-
-    # Merge all datasets on year
-    combined_df = pd.merge(vehicles_yearly, energy_yearly, on='year', how='outer')
-    combined_df = pd.merge(combined_df, energy_electric, on='year', how='left')
-    combined_df = pd.merge(combined_df, energy_other, on='year', how='left')
-    combined_df = pd.merge(combined_df, fossil_fuel_yearly, on='year', how='left')
-    combined_df = pd.merge(combined_df, residential_electric_yearly, on='year', how='left')
-    combined_df = pd.merge(combined_df, commercial_electric_yearly, on='year', how='left')
-    combined_df = combined_df.sort_values('year')
-    combined_df = combined_df.fillna(0)
-
-    # Filter to start from 2019 (when vehicle data begins)
-    combined_df = combined_df[combined_df['year'] >= 2019]
-
-    # For 2024, copy 2023 data for residential fossil fuel heating and electricity
-    if 2023 in combined_df['year'].values:
-        row_2023 = combined_df[combined_df['year'] == 2023].iloc[0]
-
-        # Check if 2024 exists, if not create it, if yes update it
-        if 2024 in combined_df['year'].values:
-            # Update existing 2024 row
-            combined_df.loc[combined_df['year'] == 2024, 'residential_fossil_fuel_mtco2e'] = row_2023['residential_fossil_fuel_mtco2e']
-            combined_df.loc[combined_df['year'] == 2024, 'residential_electric_mtco2e'] = row_2023['residential_electric_mtco2e']
-            combined_df.loc[combined_df['year'] == 2024, 'commercial_electric_mtco2e'] = row_2023['commercial_electric_mtco2e']
-        else:
-            # Create new 2024 row
-            row_2024 = pd.Series({
-                'year': 2024,
-                'vehicles_tco2e': 0,
-                'municipal_buildings_mtco2e': 0,
-                'electric_mtco2e': 0,
-                'other_fuels_mtco2e': 0,
-                'residential_fossil_fuel_mtco2e': row_2023['residential_fossil_fuel_mtco2e'],
-                'residential_electric_mtco2e': row_2023['residential_electric_mtco2e'],
-                'commercial_electric_mtco2e': row_2023['commercial_electric_mtco2e']
-            })
-            combined_df = pd.concat([combined_df, pd.DataFrame([row_2024])], ignore_index=True)
-
-    # Calculate total emissions
-    combined_df['total_tco2e'] = (combined_df['vehicles_tco2e'] +
-                                   combined_df['municipal_buildings_mtco2e'] +
-                                   combined_df['residential_fossil_fuel_mtco2e'] +
-                                   combined_df['residential_electric_mtco2e'] +
-                                   combined_df['commercial_electric_mtco2e'])
-
-    # Merge population data
-    combined_df = pd.merge(combined_df, population_df[['Year', 'Population']], left_on='year', right_on='Year', how='left')
-    combined_df = combined_df.drop('Year', axis=1)
+    st.success("Successfully loaded data from all sources")
 
     # Display current year metrics
     most_recent_year = combined_df['year'].max()
@@ -671,6 +553,74 @@ if vehicles_df is not None and energy_df is not None and mass_save_data is not N
     - **Energy (Electricity)**: All electricity consumption (residential, commercial, municipal buildings)
     """)
 
+    # Per Capita Emissions
+    st.markdown("---")
+    st.subheader("Per Capita Emissions")
+
+    # Calculate per capita emissions
+    combined_df['per_capita_tco2e'] = combined_df['total_tco2e'] / combined_df['Population']
+
+    col_per_capita1, col_per_capita2 = st.columns([2, 1])
+
+    with col_per_capita1:
+        fig_per_capita = go.Figure()
+
+        fig_per_capita.add_trace(go.Scatter(
+            x=combined_df['year'],
+            y=combined_df['per_capita_tco2e'],
+            mode='lines+markers',
+            name='Per Capita Emissions',
+            line=dict(color='rgb(231, 76, 60)', width=3),
+            marker=dict(size=10)
+        ))
+
+        fig_per_capita.update_layout(
+            title='Per Capita GHG Emissions',
+            xaxis_title='Year',
+            yaxis_title='tCO2e per Person',
+            hovermode='x',
+            height=400
+        )
+
+        st.plotly_chart(fig_per_capita, use_container_width=True)
+
+    with col_per_capita2:
+        # Get 2019 and most recent year data
+        data_2019 = combined_df[combined_df['year'] == 2019].iloc[0]
+        data_most_recent = combined_df[combined_df['year'] == combined_df['year'].max()].iloc[0]
+
+        per_capita_2019 = data_2019['per_capita_tco2e']
+        per_capita_recent = data_most_recent['per_capita_tco2e']
+        per_capita_change = per_capita_recent - per_capita_2019
+        per_capita_change_pct = (per_capita_change / per_capita_2019) * 100
+
+        st.markdown("### Key Metrics")
+        st.metric(
+            label=f"Per Capita Emissions ({int(data_most_recent['year'])})",
+            value=f"{per_capita_recent:.2f} tCO2e/person",
+            delta=f"{per_capita_change:.2f} ({per_capita_change_pct:+.1f}%)",
+            delta_color="inverse"
+        )
+
+        st.metric(
+            label="Population",
+            value=f"{int(data_most_recent['Population']):,}"
+        )
+
+        st.metric(
+            label="Total Emissions",
+            value=f"{data_most_recent['total_tco2e']:.0f} mtCO2e"
+        )
+
+        st.markdown(f"""
+        Per capita emissions help normalize emissions data relative to population growth.
+        From 2019 to {int(data_most_recent['year'])}, per capita emissions changed by
+        **{per_capita_change_pct:+.1f}%**, while total population grew by
+        **{((data_most_recent['Population'] - data_2019['Population']) / data_2019['Population'] * 100):.1f}%**.
+        """)
+
+    st.markdown("---")
+
     # Show detailed breakdown table
     st.subheader("Detailed Emissions Breakdown by Year")
     display_df = combined_df[[
@@ -704,5 +654,7 @@ if vehicles_df is not None and energy_df is not None and mass_save_data is not N
         file_name="combined_emissions_data.csv",
         mime="text/csv"
     )
-else:
-    st.error("Unable to load one or both data sources. Please check the configuration.")
+
+except Exception as e:
+    st.error(f"Error loading data: {str(e)}")
+    st.write("Please check that all required data files are present.")
