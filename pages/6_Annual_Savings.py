@@ -40,14 +40,16 @@ if vehicles_df is not None and fossil_fuel_data_tuple is not None and solar_df i
     ELECTRICITY_EMISSION_FACTOR = 0.239  # tCO2e per MWh (from emission_factors.csv)
 
     # Filter solar data to 2019 onwards
-    solar_savings = solar_df[solar_df['Year'] >= 2019][['Year', 'Capacity (kW DC) All Cumulative']].copy()
-    solar_savings.columns = ['year', 'capacity_kw_dc_cumulative']
+    solar_savings = solar_df[solar_df['Year'] >= 2019][['Year', 'Capacity (kW DC) All Cumulative', 'Project Count All Cumulative']].copy()
+    solar_savings.columns = ['year', 'capacity_kw_dc_cumulative', 'project_count_cumulative']
 
-    # Get 2019 baseline capacity
+    # Get 2019 baseline capacity and project count
     baseline_2019_capacity = solar_savings[solar_savings['year'] == 2019]['capacity_kw_dc_cumulative'].values[0] if len(solar_savings) > 0 else 0
+    baseline_2019_projects = solar_savings[solar_savings['year'] == 2019]['project_count_cumulative'].values[0] if len(solar_savings) > 0 else 0
 
-    # Calculate capacity added since 2019
+    # Calculate capacity and projects added since 2019
     solar_savings['capacity_kw_dc'] = solar_savings['capacity_kw_dc_cumulative'] - baseline_2019_capacity
+    solar_savings['project_count'] = solar_savings['project_count_cumulative'] - baseline_2019_projects
 
     # Calculate energy generation and emissions avoided (only for NEW capacity since 2019)
     solar_savings['annual_mwh'] = solar_savings['capacity_kw_dc'] * SOLAR_CAPACITY_FACTOR
@@ -103,7 +105,7 @@ if vehicles_df is not None and fossil_fuel_data_tuple is not None and solar_df i
 
     # Merge all savings data
     combined_savings = pd.merge(heat_pump_savings, ev_savings, on='year', how='outer').fillna(0)
-    combined_savings = pd.merge(combined_savings, solar_savings[['year', 'solar_savings_mtco2e', 'annual_mwh', 'capacity_kw_dc']], on='year', how='outer').fillna(0)
+    combined_savings = pd.merge(combined_savings, solar_savings[['year', 'solar_savings_mtco2e', 'annual_mwh', 'capacity_kw_dc', 'project_count']], on='year', how='outer').fillna(0)
     combined_savings = combined_savings.sort_values('year')
 
     # Calculate total savings
@@ -115,32 +117,39 @@ if vehicles_df is not None and fossil_fuel_data_tuple is not None and solar_df i
     # TOP METRICS SECTION
     # ============================================================================
 
-    st.subheader("2023 Impact Summary")
+    # Get most recent year with EV and Solar data (for the top summary only)
+    most_recent_year_ev_solar = int(combined_savings[combined_savings['bev_count'] > 0]['year'].max())
 
-    # Get 2023 data
+    # Get data for top summary (use most recent EV/Solar data available)
+    data_recent_top = combined_savings[combined_savings['year'] == most_recent_year_ev_solar].iloc[0]
+
+    # Get 2023 data for combined chart and detailed sections (heat pumps only go to 2023)
     data_2023 = combined_savings[combined_savings['year'] == 2023].iloc[0]
     data_2019 = combined_savings[combined_savings['year'] == 2019].iloc[0]
+
+    st.subheader(f"Impact Summary ({most_recent_year_ev_solar})")
 
     col1, col2, col3, col4, col5 = st.columns(5)
 
     with col1:
-        total_savings = data_2023['total_annual_savings']
+        # Mix of 2023 heat pump data and most recent EV/solar data
+        total_savings_mixed = data_2023['propane_mtco2e_eliminated'] + data_recent_top['total_ev_savings_mtco2e'] + data_recent_top['solar_savings_mtco2e']
         st.metric(
-            label="Total Annual Savings (2023)",
-            value=f"{total_savings:.0f} mtCO2e/year",
-            help="Ongoing annual emissions reductions from heat pumps, EVs, and solar"
+            label=f"Total Annual Savings",
+            value=f"{total_savings_mixed:.0f} mtCO2e/year",
+            help=f"Heat pumps (2023) + EVs & Solar ({most_recent_year_ev_solar})"
         )
 
     with col2:
         heat_pump_conversions = int(data_2023['cumulative_conversions'])
         st.metric(
-            label="Properties with Heat Pumps",
+            label="Properties with Heat Pumps (2023)",
             value=f"{heat_pump_conversions}",
             delta=f"+{heat_pump_conversions - int(data_2019['cumulative_conversions'])} since 2019"
         )
 
     with col3:
-        total_bevs = int(data_2023['bev_count'])
+        total_bevs = int(data_recent_top['bev_count'])
         st.metric(
             label="Battery Electric Vehicles",
             value=f"{total_bevs}",
@@ -148,7 +157,7 @@ if vehicles_df is not None and fossil_fuel_data_tuple is not None and solar_df i
         )
 
     with col4:
-        total_phevs = int(data_2023['phev_count'])
+        total_phevs = int(data_recent_top['phev_count'])
         st.metric(
             label="Plug-in Hybrid Vehicles",
             value=f"{total_phevs}",
@@ -156,11 +165,12 @@ if vehicles_df is not None and fossil_fuel_data_tuple is not None and solar_df i
         )
 
     with col5:
-        solar_capacity_added = data_2023['capacity_kw_dc']  # This is already the difference from 2019
+        solar_projects_added = int(data_recent_top['project_count'])  # This is already the difference from 2019
         st.metric(
-            label="Solar Added Since 2019",
-            value=f"{solar_capacity_added:.0f} kW DC",
-            help="New solar capacity installed since 2019 baseline"
+            label="Solar Projects Added",
+            value=f"{solar_projects_added}",
+            delta=f"+{solar_projects_added} since 2019",
+            help="New solar installations since 2019 baseline"
         )
 
     st.markdown("---")
@@ -272,8 +282,8 @@ if vehicles_df is not None and fossil_fuel_data_tuple is not None and solar_df i
         st.markdown(f"""
         **Solar Energy Rising**
         - Solar accounts for **{solar_percentage:.1f}%** of total annual savings in 2023
-        - {data_2023['capacity_kw_dc']:.0f} kW DC added since 2019
-        - Generating ~{data_2023['annual_mwh']:.0f} MWh/year, saving {data_2023['solar_savings_mtco2e']:.0f} mtCO2e annually
+        - {int(data_2023['project_count'])} new solar projects installed since 2019
+        - {data_2023['capacity_kw_dc']:.0f} kW DC added, saving {data_2023['solar_savings_mtco2e']:.0f} mtCO2e annually
         """)
 
     st.markdown(f"""
