@@ -1,7 +1,7 @@
 """
 Projections module for future GHG emissions scenarios.
 
-This module calculates projected emissions from 2024-2050 based on:
+This module calculates projected emissions through 2050 based on:
 1. EV adoption goals
 2. Residential heat pump adoption goals
 3. Municipal building electrification goals
@@ -9,21 +9,26 @@ This module calculates projected emissions from 2024-2050 based on:
 
 All projections use baseline data from home_calculations and apply
 goal-based trajectories with linear interpolation between milestone years.
+The baseline year is derived dynamically from the most recent year of
+complete historical data.
 """
 
 import pandas as pd
 import numpy as np
-from home_calculations import prepare_home_dashboard_data
+from home_calculations import prepare_home_dashboard_data, get_baseline_year
 import emission_factors
 
 
-def load_goals():
+def load_goals(baseline_year):
     """
-    Load all goal CSV files and inject current state (2024) as baseline.
+    Load all goal CSV files and inject current state as the first projection year.
 
-    Calculates current EV and heat pump adoption from 2023 baseline data
-    and adds it as the first goal year (2024) to ensure smooth interpolation
+    Calculates current EV and heat pump adoption from baseline-year data and adds
+    it as the first goal year (baseline_year + 1) to ensure smooth interpolation
     from current state to future goals.
+
+    Args:
+        baseline_year (int): Most recent year of historical data.
 
     Returns:
         dict: Dictionary with keys:
@@ -42,43 +47,58 @@ def load_goals():
     municipal_elec_goals = pd.read_csv('data/goals/municipal_electrification.csv')
     municipal_elec_goals['munipal_heat_pump_adoption'] = municipal_elec_goals['munipal_heat_pump_adoption'].str.replace('%', '').astype(float) / 100.0
 
-    # Calculate current adoption from 2023 baseline data
-    from data_loader import load_vehicle_data
+    from data_loader import load_vehicle_data, calculate_total_fossil_fuel_heating, load_assessors_data
+
+    inject_year = baseline_year + 1
 
     try:
-        # Get 2023 Q4 vehicle data to calculate current EV adoption
         vehicles_df = load_vehicle_data()
-        q4_2023 = vehicles_df[vehicles_df['Quarter'] == '10/1/23']
+        vehicles_df = vehicles_df.copy()
+        vehicles_df['Quarter_Date'] = pd.to_datetime(vehicles_df['Quarter'])
+        # Use Q4 of baseline year for current EV share (October = Q4 registrations)
+        baseline_q4 = vehicles_df[(vehicles_df['Quarter_Date'].dt.year == baseline_year) &
+                                  (vehicles_df['Quarter_Date'].dt.month == 10)]
 
-        if len(q4_2023) > 0:
-            total_emissions = q4_2023['tCo2e'].sum()
-            ev_hybrid_emissions = q4_2023[q4_2023['Type'].str.contains('Electric|Hybrid', case=False, na=False)]['tCo2e'].sum()
+        if len(baseline_q4) > 0:
+            total_emissions = baseline_q4['tCo2e'].sum()
+            ev_hybrid_emissions = baseline_q4[baseline_q4['Type'].str.contains('Electric|Hybrid', case=False, na=False)]['tCo2e'].sum()
             current_ev_pct = ev_hybrid_emissions / total_emissions if total_emissions > 0 else 0.03
         else:
-            # Fallback if no 2023 data
-            current_ev_pct = 0.03  # ~3% based on typical MA adoption
+            current_ev_pct = 0.03
     except Exception:
-        # Fallback if data loading fails
         current_ev_pct = 0.03
 
-    # Estimate current heat pump adoption (harder to calculate, use conservative estimate)
-    # Based on Mass Save data, roughly 5% of homes have heat pumps as of 2023
-    current_hp_pct = 0.05
+    try:
+        fossil_fuel_tuple = calculate_total_fossil_fuel_heating()
+        fossil_fuel_results, _ = fossil_fuel_tuple
+        hp_series = fossil_fuel_results[fossil_fuel_results['year'] == baseline_year]['heat_pump_locations']
+        if len(hp_series) == 0:
+            # Fall back to the most recent heat-pump data if baseline year isn't covered
+            hp_count = fossil_fuel_results.sort_values('year').iloc[-1]['heat_pump_locations']
+        else:
+            hp_count = hp_series.values[0]
 
-    # Municipal electrification is just starting, use 0%
+        assessors_df = load_assessors_data()
+        residential_properties = len(assessors_df[(assessors_df['PropertyType'] == 'R') &
+                                                    (assessors_df['NetSF'].notna()) &
+                                                    (assessors_df['NetSF'] > 0)])
+
+        current_hp_pct = hp_count / residential_properties if residential_properties > 0 else 0.10
+    except Exception:
+        current_hp_pct = 0.10
+
     current_muni_pct = 0.0
 
-    # Inject 2024 baseline into goals (only if not already present)
-    if 2024 not in ev_goals['year'].values:
-        baseline_ev = pd.DataFrame({'year': [2024], 'EV Adoption': [current_ev_pct]})
+    if inject_year not in ev_goals['year'].values:
+        baseline_ev = pd.DataFrame({'year': [inject_year], 'EV Adoption': [current_ev_pct]})
         ev_goals = pd.concat([baseline_ev, ev_goals], ignore_index=True).sort_values('year')
 
-    if 2024 not in residential_hp_goals['year'].values:
-        baseline_hp = pd.DataFrame({'year': [2024], 'heat pump adoption': [current_hp_pct]})
+    if inject_year not in residential_hp_goals['year'].values:
+        baseline_hp = pd.DataFrame({'year': [inject_year], 'heat pump adoption': [current_hp_pct]})
         residential_hp_goals = pd.concat([baseline_hp, residential_hp_goals], ignore_index=True).sort_values('year')
 
-    if 2024 not in municipal_elec_goals['year'].values:
-        baseline_muni = pd.DataFrame({'year': [2024], 'munipal_heat_pump_adoption': [current_muni_pct]})
+    if inject_year not in municipal_elec_goals['year'].values:
+        baseline_muni = pd.DataFrame({'year': [inject_year], 'munipal_heat_pump_adoption': [current_muni_pct]})
         municipal_elec_goals = pd.concat([baseline_muni, municipal_elec_goals], ignore_index=True).sort_values('year')
 
     return {
@@ -88,7 +108,7 @@ def load_goals():
     }
 
 
-def interpolate_goal(goals_df, year_col, value_col, target_year, baseline_year=2023, baseline_value=0.0):
+def interpolate_goal(goals_df, year_col, value_col, target_year, baseline_year, baseline_value=0.0):
     """
     Interpolate a goal value for a specific year.
 
@@ -101,7 +121,7 @@ def interpolate_goal(goals_df, year_col, value_col, target_year, baseline_year=2
         year_col (str): Name of the year column
         value_col (str): Name of the value column (as percentage 0.0-1.0)
         target_year (int): Year to get goal for
-        baseline_year (int): Baseline year (default 2023)
+        baseline_year (int): Baseline year (most recent historical year)
         baseline_value (float): Baseline value at baseline year (default 0.0)
 
     Returns:
@@ -354,14 +374,15 @@ def project_commercial_electricity(baseline_commercial_electric_mtco2e, target_y
         return baseline_commercial_electric_mtco2e
 
 
-def project_emissions_for_year(baseline_data, target_year, goals, population_growth_factor=1.0):
+def project_emissions_for_year(baseline_data, target_year, goals, baseline_year, population_growth_factor=1.0):
     """
     Project all emissions for a specific target year.
 
     Args:
-        baseline_data (dict): Baseline emissions data (from 2023)
+        baseline_data (dict): Baseline emissions data (from baseline_year)
         target_year (int): Target year for projection
         goals (dict): Goals dictionary from load_goals()
+        baseline_year (int): Most recent historical year used as baseline
         population_growth_factor (float): Population growth multiplier
 
     Returns:
@@ -370,17 +391,17 @@ def project_emissions_for_year(baseline_data, target_year, goals, population_gro
     # Interpolate all goals for this year
     ev_adoption = interpolate_goal(
         goals['ev_adoption'], 'year', 'EV Adoption', target_year,
-        baseline_year=2023, baseline_value=0.0
+        baseline_year=baseline_year, baseline_value=0.0
     )
 
     hp_adoption = interpolate_goal(
         goals['residential_heat_pumps'], 'year', 'heat pump adoption', target_year,
-        baseline_year=2023, baseline_value=0.0
+        baseline_year=baseline_year, baseline_value=0.0
     )
 
     muni_elec = interpolate_goal(
         goals['municipal_electrification'], 'year', 'munipal_heat_pump_adoption', target_year,
-        baseline_year=2023, baseline_value=0.0
+        baseline_year=baseline_year, baseline_value=0.0
     )
 
     # Project each sector
@@ -431,24 +452,28 @@ def project_emissions_for_year(baseline_data, target_year, goals, population_gro
     }
 
 
-def create_full_projection(start_year=2024, end_year=2050, population_growth_rate=0.0):
+def create_full_projection(start_year=None, end_year=2050, population_growth_rate=0.0):
     """
     Create full emissions projection from start_year to end_year.
 
     Args:
-        start_year (int): First projection year (default 2024)
+        start_year (int, optional): First projection year. Defaults to baseline_year + 1
+            where baseline_year is the most recent complete year of historical data.
         end_year (int): Last projection year (default 2050)
         population_growth_rate (float): Annual population growth rate (default 0.0)
 
     Returns:
         tuple: (projection_df, baseline_data, goals)
             - projection_df: DataFrame with projections for each year
-            - baseline_data: Baseline (2023) data used
+            - baseline_data: Baseline data used (from the most recent historical year)
             - goals: Goals dictionary
     """
-    # Load baseline data
     combined_df, metadata = prepare_home_dashboard_data()
-    baseline_year_data = combined_df[combined_df['year'] == 2023].iloc[0]
+    baseline_year = get_baseline_year(combined_df)
+    baseline_year_data = combined_df[combined_df['year'] == baseline_year].iloc[0]
+
+    if start_year is None:
+        start_year = baseline_year + 1
 
     baseline_data = {
         'vehicles_tco2e': baseline_year_data['vehicles_tco2e'],
@@ -457,46 +482,44 @@ def create_full_projection(start_year=2024, end_year=2050, population_growth_rat
         'commercial_electric_mtco2e': baseline_year_data['commercial_electric_mtco2e'],
         'other_fuels_mtco2e': baseline_year_data['other_fuels_mtco2e'],
         'electric_mtco2e': baseline_year_data['electric_mtco2e'],
-        'total_tco2e': baseline_year_data['total_tco2e']
+        'total_tco2e': baseline_year_data['total_tco2e'],
+        'baseline_year': baseline_year,
     }
 
-    # Load goals
-    goals = load_goals()
+    goals = load_goals(baseline_year)
 
-    # Project for each year
     projections = []
+    first_projection_year = baseline_year + 1
     for year in range(start_year, end_year + 1):
-        years_from_baseline = year - 2023
+        years_from_baseline = year - baseline_year
         pop_growth_factor = (1 + population_growth_rate) ** years_from_baseline
 
-        # For 2024, use baseline emissions but show actual current adoption percentages
-        # The baseline already includes current EVs/heat pumps, so emissions = 2023
-        # But we want to show the actual adoption rates for charting
-        if year == 2024:
-            # Get the injected 2024 adoption rates from goals
-            ev_2024 = goals['ev_adoption'][goals['ev_adoption']['year'] == 2024]['EV Adoption'].values[0] if 2024 in goals['ev_adoption']['year'].values else 0.03
-            hp_2024 = goals['residential_heat_pumps'][goals['residential_heat_pumps']['year'] == 2024]['heat pump adoption'].values[0] if 2024 in goals['residential_heat_pumps']['year'].values else 0.05
-            muni_2024 = goals['municipal_electrification'][goals['municipal_electrification']['year'] == 2024]['munipal_heat_pump_adoption'].values[0] if 2024 in goals['municipal_electrification']['year'].values else 0.0
+        # The first projection year should match baseline emissions exactly (continuity),
+        # but display the injected current-state adoption rates for charting.
+        if year == first_projection_year:
+            ev_pct = goals['ev_adoption'][goals['ev_adoption']['year'] == year]['EV Adoption'].values[0] if year in goals['ev_adoption']['year'].values else 0.03
+            hp_pct = goals['residential_heat_pumps'][goals['residential_heat_pumps']['year'] == year]['heat pump adoption'].values[0] if year in goals['residential_heat_pumps']['year'].values else 0.05
+            muni_pct = goals['municipal_electrification'][goals['municipal_electrification']['year'] == year]['munipal_heat_pump_adoption'].values[0] if year in goals['municipal_electrification']['year'].values else 0.0
 
             projection = {
-                'year': 2024,
+                'year': year,
                 'vehicles_tco2e': baseline_data['vehicles_tco2e'],
-                'vehicles_ice_tco2e': baseline_data['vehicles_tco2e'] * (1 - ev_2024),
-                'vehicles_ev_tco2e': baseline_data['vehicles_tco2e'] * ev_2024,
-                'ev_adoption_pct': ev_2024,
+                'vehicles_ice_tco2e': baseline_data['vehicles_tco2e'] * (1 - ev_pct),
+                'vehicles_ev_tco2e': baseline_data['vehicles_tco2e'] * ev_pct,
+                'ev_adoption_pct': ev_pct,
                 'residential_fossil_fuel_mtco2e': baseline_data['residential_fossil_fuel_mtco2e'],
                 'residential_electric_mtco2e': baseline_data['residential_electric_mtco2e'],
-                'residential_heat_pump_electric_mtco2e': 0.0,  # Already included in baseline
-                'heat_pump_adoption_pct': hp_2024,
+                'residential_heat_pump_electric_mtco2e': 0.0,  # Already in baseline
+                'heat_pump_adoption_pct': hp_pct,
                 'commercial_electric_mtco2e': baseline_data['commercial_electric_mtco2e'],
                 'municipal_other_fuels_mtco2e': baseline_data['other_fuels_mtco2e'],
                 'municipal_electric_mtco2e': baseline_data['electric_mtco2e'],
-                'municipal_electrification_pct': muni_2024,
+                'municipal_electrification_pct': muni_pct,
                 'total_tco2e': baseline_data['total_tco2e'],
-                'grid_clean_energy_pct': emission_factors.get_grid_clean_energy_percent(2024)
+                'grid_clean_energy_pct': emission_factors.get_grid_clean_energy_percent(year)
             }
         else:
-            projection = project_emissions_for_year(baseline_data, year, goals, pop_growth_factor)
+            projection = project_emissions_for_year(baseline_data, year, goals, baseline_year, pop_growth_factor)
         projections.append(projection)
 
     projection_df = pd.DataFrame(projections)
@@ -505,22 +528,26 @@ def create_full_projection(start_year=2024, end_year=2050, population_growth_rat
 
 
 if __name__ == '__main__':
-    # Test the module
     print("Creating emissions projections...")
     projection_df, baseline, goals = create_full_projection()
 
+    baseline_year = baseline['baseline_year']
     print(f"\nProjections created for {len(projection_df)} years: {projection_df['year'].min()}-{projection_df['year'].max()}")
+    print(f"Baseline year (most recent complete historical data): {baseline_year}")
 
     print("\nKey milestones:")
-    for year in [2024, 2030, 2040, 2050]:
-        data = projection_df[projection_df['year'] == year].iloc[0]
+    for year in [baseline_year + 1, 2030, 2040, 2050]:
+        row = projection_df[projection_df['year'] == year]
+        if len(row) == 0:
+            continue
+        data = row.iloc[0]
         print(f"\n{year}:")
         print(f"  Total emissions: {data['total_tco2e']:.0f} mtCO2e")
         print(f"  EV adoption: {data['ev_adoption_pct']*100:.1f}%")
         print(f"  Heat pump adoption: {data['heat_pump_adoption_pct']*100:.1f}%")
         print(f"  Grid clean energy: {data['grid_clean_energy_pct']*100:.1f}%")
 
-    print(f"\nReduction from 2023 baseline ({baseline['total_tco2e']:.0f} mtCO2e) to 2050:")
+    print(f"\nReduction from {baseline_year} baseline ({baseline['total_tco2e']:.0f} mtCO2e) to 2050:")
     reduction = baseline['total_tco2e'] - projection_df[projection_df['year'] == 2050]['total_tco2e'].values[0]
     reduction_pct = (reduction / baseline['total_tco2e']) * 100
     print(f"  {reduction:.0f} mtCO2e ({reduction_pct:.1f}% reduction)")

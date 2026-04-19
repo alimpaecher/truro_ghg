@@ -94,13 +94,13 @@ class TestProcessEnergyData:
         assert 'year' in energy_other.columns
         assert 'other_fuels_mtco2e' in energy_other.columns
 
-    def test_process_energy_filters_future_years(self):
-        """Test that future years (>= 2025) are filtered out."""
+    def test_process_energy_includes_all_years(self):
+        """Test that process_energy_data surfaces every fiscal year in the source."""
         energy_df = load_energy_data()
         energy_yearly, _, _ = home_calculations.process_energy_data(energy_df)
 
-        # Should not have 2025 or later
-        assert (energy_yearly['year'] < 2025).all()
+        # Should preserve the full set of fiscal years present in the raw data
+        assert set(energy_yearly['year']) == set(energy_df['fiscal_year'].unique())
 
 
 class TestProcessResidentialCommercialElectricity:

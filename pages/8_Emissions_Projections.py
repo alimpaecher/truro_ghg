@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from projections import create_full_projection
-from home_calculations import prepare_home_dashboard_data
+from home_calculations import prepare_home_dashboard_data, get_baseline_year
 
 # Page configuration
 st.set_page_config(
@@ -14,7 +14,7 @@ st.set_page_config(
 st.title("Emissions Projections to 2050")
 
 st.markdown("""
-This page shows projected greenhouse gas emissions from 2024 to 2050 based on
+This page shows projected greenhouse gas emissions through 2050 based on
 the Town of Truro's climate action goals:
 - **EV Adoption**: Transitioning to electric vehicles (17% by 2030, 100% by 2050)
 - **Residential Heat Pumps**: Converting heating systems (30% by 2030, 92% by 2050)
@@ -27,13 +27,14 @@ try:
     with st.spinner("Loading projection data..."):
         # Get historical data
         historical_df, metadata = prepare_home_dashboard_data()
+        baseline_year = get_baseline_year(historical_df)
+        projection_start_year = baseline_year + 1
 
-        # Get projections
-        projection_df, baseline_data, goals = create_full_projection(2024, 2050)
+        # Get projections (starts at baseline_year + 1)
+        projection_df, baseline_data, goals = create_full_projection(projection_start_year, 2050)
 
-        # Combine historical and projected data
-        # Filter historical to only include years before 2024 (projections start at 2024)
-        historical_for_chart = historical_df[historical_df['year'] < 2024][['year', 'vehicles_tco2e', 'residential_fossil_fuel_mtco2e',
+        # Historical rows that predate the first projection year
+        historical_for_chart = historical_df[historical_df['year'] < projection_start_year][['year', 'vehicles_tco2e', 'residential_fossil_fuel_mtco2e',
                                                'residential_electric_mtco2e', 'commercial_electric_mtco2e',
                                                'other_fuels_mtco2e', 'electric_mtco2e', 'total_tco2e']]
 
@@ -57,17 +58,17 @@ try:
     # Key Metrics
     st.subheader("Projected 2050 Impact")
 
-    baseline_2023 = historical_df[historical_df['year'] == 2023]['total_tco2e'].values[0]
+    baseline_total = historical_df[historical_df['year'] == baseline_year]['total_tco2e'].values[0]
     projected_2050 = projection_df[projection_df['year'] == 2050]['total_tco2e'].values[0]
-    reduction = baseline_2023 - projected_2050
-    reduction_pct = (reduction / baseline_2023) * 100
+    reduction = baseline_total - projected_2050
+    reduction_pct = (reduction / baseline_total) * 100
 
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         st.metric(
-            label="2023 Baseline",
-            value=f"{baseline_2023:,.0f} tCO2e"
+            label=f"{baseline_year} Baseline",
+            value=f"{baseline_total:,.0f} tCO2e"
         )
 
     with col2:
@@ -89,8 +90,8 @@ try:
     with col4:
         # 2030 interim target
         projected_2030 = projection_df[projection_df['year'] == 2030]['total_tco2e'].values[0]
-        reduction_2030 = baseline_2023 - projected_2030
-        reduction_2030_pct = (reduction_2030 / baseline_2023) * 100
+        reduction_2030 = baseline_total - projected_2030
+        reduction_2030_pct = (reduction_2030 / baseline_total) * 100
         st.metric(
             label="2030 Interim",
             value=f"{projected_2030:,.0f} tCO2e",
@@ -99,7 +100,8 @@ try:
         )
 
     # Extended Emissions Chart (Historical + Projected)
-    st.subheader("Total Emissions: Historical and Projected (2019-2050)")
+    historical_min_year = int(historical_df['year'].min())
+    st.subheader(f"Total Emissions: Historical and Projected ({historical_min_year}-2050)")
 
     # Add category filter
     all_categories = [
@@ -120,9 +122,9 @@ try:
     if selected_categories:
         fig_combined = go.Figure()
 
-        # Add a vertical line at 2024 to separate historical from projected
+        # Vertical separator between historical and projected
         fig_combined.add_vline(
-            x=2024,
+            x=projection_start_year,
             line_dash="dash",
             line_color="gray",
             annotation_text="Projected →",
@@ -277,7 +279,7 @@ try:
             marker=dict(size=6)
         ))
 
-        fig_vehicles.add_vline(x=2024, line_dash="dash", line_color="gray")
+        fig_vehicles.add_vline(x=projection_start_year, line_dash="dash", line_color="gray")
 
         fig_vehicles.update_layout(
             title='Vehicle Emissions Over Time',
@@ -510,11 +512,14 @@ try:
     # Milestone Table
     st.subheader("Key Milestone Years")
 
-    milestone_years = [2024, 2030, 2040, 2050]
+    milestone_years = [projection_start_year, 2030, 2040, 2050]
     milestone_data = []
 
     for year in milestone_years:
-        row = projection_df[projection_df['year'] == year].iloc[0]
+        rows = projection_df[projection_df['year'] == year]
+        if len(rows) == 0:
+            continue
+        row = rows.iloc[0]
         milestone_data.append({
             'Year': int(year),
             'Total Emissions (tCO2e)': f"{row['total_tco2e']:,.0f}",
@@ -522,7 +527,7 @@ try:
             'Heat Pumps': f"{row['heat_pump_adoption_pct']*100:.1f}%",
             'Municipal Electrification': f"{row['municipal_electrification_pct']*100:.1f}%",
             'Grid Clean Energy': f"{row['grid_clean_energy_pct']*100:.1f}%",
-            'Reduction from 2023': f"{((baseline_2023 - row['total_tco2e']) / baseline_2023 * 100):.1f}%"
+            f'Reduction from {baseline_year}': f"{((baseline_total - row['total_tco2e']) / baseline_total * 100):.1f}%"
         })
 
     milestone_df = pd.DataFrame(milestone_data)

@@ -460,9 +460,20 @@ if mass_save_data is not None and fossil_fuel_tuple is not None and propane_data
     # Summary
     latest_year_data = fossil_fuel_results.iloc[-1]
 
+    # Calculate residential property count for adoption percentage
+    residential_count = 0
+    if df is not None:
+        residential_count = len(df[(df['PropertyType'] == 'R') &
+                                   (df['NetSF'].notna()) &
+                                   (df['NetSF'] > 0)])
+
+    # Calculate heat pump adoption percentage
+    hp_adoption_pct = (latest_year_data['heat_pump_locations'] / residential_count * 100) if residential_count > 0 else 0
+
     st.success(f"""
     📊 **Bottom Line (2023)**:
     - **{int(latest_year_data['cumulative_conversions'])} properties** have converted from propane to heat pumps since 2019
+    - **{int(latest_year_data['heat_pump_locations'])} total heat pumps** ({hp_adoption_pct:.1f}% of {residential_count:,} residential properties)
     - **{latest_year_data['propane_mtco2e_eliminated']:.1f} mtCO2e** in propane emissions eliminated annually
     - **Average per heat pump: {fossil_fuel_metadata['propane_per_property_mtco2e_yearround']:.2f} mtCO2e/property/year** eliminated
     - **Total fossil fuel heating: {latest_year_data['total_fossil_fuel_mtco2e']:,.1f} mtCO2e** (down from {baseline_2019:,.1f} mtCO2e in 2019)

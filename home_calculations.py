@@ -64,8 +64,7 @@ def process_energy_data(energy_df):
             - energy_electric: Municipal electric emissions only
             - energy_other: Municipal other fuels emissions only
     """
-    # Filter out incomplete future data
-    energy_df = energy_df[energy_df['fiscal_year'] < 2025].copy()
+    energy_df = energy_df.copy()
 
     # Separate electric from other fuels
     energy_electric = energy_df[energy_df['account_fuel'] == 'Electric'].groupby('fiscal_year')['mtco2e'].sum().reset_index()
@@ -166,44 +165,26 @@ def merge_all_emissions_data(vehicles_yearly, energy_yearly, energy_electric, en
     return combined_df
 
 
-def fill_2024_estimates(combined_df):
+def get_baseline_year(combined_df):
     """
-    Fill 2024 data with 2023 estimates for categories without 2024 data.
+    Return the most recent year in combined_df where all key emission categories
+    have non-zero values — i.e. the latest fully-populated historical year.
 
-    For residential fossil fuel heating and electricity, uses 2023 values as estimates
-    for 2024 when actual data is not available.
-
-    Args:
-        combined_df (pd.DataFrame): Combined emissions data
-
-    Returns:
-        pd.DataFrame: Combined data with 2024 estimates filled in
+    Projections and chart "historical vs projected" cutoffs should key off this
+    rather than a hardcoded constant.
     """
-    combined_df = combined_df.copy()
-
-    if 2023 in combined_df['year'].values:
-        row_2023 = combined_df[combined_df['year'] == 2023].iloc[0]
-
-        if 2024 in combined_df['year'].values:
-            # Update existing 2024 row
-            combined_df.loc[combined_df['year'] == 2024, 'residential_fossil_fuel_mtco2e'] = row_2023['residential_fossil_fuel_mtco2e']
-            combined_df.loc[combined_df['year'] == 2024, 'residential_electric_mtco2e'] = row_2023['residential_electric_mtco2e']
-            combined_df.loc[combined_df['year'] == 2024, 'commercial_electric_mtco2e'] = row_2023['commercial_electric_mtco2e']
-        else:
-            # Create new 2024 row
-            row_2024 = pd.Series({
-                'year': 2024,
-                'vehicles_tco2e': 0,
-                'municipal_buildings_mtco2e': 0,
-                'electric_mtco2e': 0,
-                'other_fuels_mtco2e': 0,
-                'residential_fossil_fuel_mtco2e': row_2023['residential_fossil_fuel_mtco2e'],
-                'residential_electric_mtco2e': row_2023['residential_electric_mtco2e'],
-                'commercial_electric_mtco2e': row_2023['commercial_electric_mtco2e']
-            })
-            combined_df = pd.concat([combined_df, pd.DataFrame([row_2024])], ignore_index=True)
-
-    return combined_df
+    key_cols = [
+        'vehicles_tco2e',
+        'municipal_buildings_mtco2e',
+        'residential_fossil_fuel_mtco2e',
+        'residential_electric_mtco2e',
+        'commercial_electric_mtco2e',
+    ]
+    has_all = (combined_df[key_cols] > 0).all(axis=1)
+    years_with_data = combined_df[has_all]['year']
+    if len(years_with_data) > 0:
+        return int(years_with_data.max())
+    return int(combined_df['year'].max())
 
 
 def calculate_total_emissions(combined_df):
@@ -281,11 +262,6 @@ def prepare_home_dashboard_data():
     population_df = pd.read_csv('data/truro-population.csv')
     population_df['Population'] = population_df['Population'].str.replace(',', '').astype(int)
 
-    # Add 2024 estimate (same as 2023)
-    population_2023 = population_df[population_df['Year'] == 2023]['Population'].values[0]
-    population_2024 = pd.DataFrame({'Year': [2024], 'Population': [population_2023]})
-    population_df = pd.concat([population_df, population_2024], ignore_index=True)
-
     # Process all data sources
     vehicles_yearly = process_vehicles_data(vehicles_df)
     energy_yearly, energy_electric, energy_other = process_energy_data(energy_df)
@@ -297,9 +273,6 @@ def prepare_home_dashboard_data():
         vehicles_yearly, energy_yearly, energy_electric, energy_other,
         fossil_fuel_yearly, residential_electric_yearly, commercial_electric_yearly
     )
-
-    # Fill 2024 estimates
-    combined_df = fill_2024_estimates(combined_df)
 
     # Calculate totals
     combined_df = calculate_total_emissions(combined_df)
@@ -329,4 +302,6 @@ if __name__ == '__main__':
                                                          'residential_fossil_fuel_mtco2e', 'total_tco2e']]
     print(recent.to_string(index=False))
 
-    print(f"\n2023 Total Emissions: {combined_df[combined_df['year']==2023]['total_tco2e'].values[0]:.2f} mtCO2e")
+    baseline_year = get_baseline_year(combined_df)
+    print(f"\nBaseline year (most recent complete data): {baseline_year}")
+    print(f"{baseline_year} Total Emissions: {combined_df[combined_df['year']==baseline_year]['total_tco2e'].values[0]:.2f} mtCO2e")

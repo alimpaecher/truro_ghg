@@ -34,12 +34,12 @@ class TestLoadGoals:
 
     def test_load_goals_returns_dict(self):
         """Test that load_goals returns a dictionary."""
-        goals = projections.load_goals()
+        goals = projections.load_goals(2023)
         assert isinstance(goals, dict)
 
     def test_load_goals_has_all_keys(self):
         """Test that all expected goal types are present."""
-        goals = projections.load_goals()
+        goals = projections.load_goals(2023)
 
         expected_keys = ['ev_adoption', 'residential_heat_pumps', 'municipal_electrification']
         for key in expected_keys:
@@ -47,7 +47,7 @@ class TestLoadGoals:
 
     def test_ev_adoption_goals_structure(self):
         """Test EV adoption goals have correct structure."""
-        goals = projections.load_goals()
+        goals = projections.load_goals(2023)
         ev_goals = goals['ev_adoption']
 
         assert 'year' in ev_goals.columns
@@ -59,7 +59,7 @@ class TestLoadGoals:
 
     def test_ev_adoption_2050_goal(self):
         """Test that 2050 EV adoption goal is 100%."""
-        goals = projections.load_goals()
+        goals = projections.load_goals(2023)
         ev_goals = goals['ev_adoption']
 
         ev_2050 = ev_goals[ev_goals['year'] == 2050]['EV Adoption'].values[0]
@@ -71,7 +71,7 @@ class TestInterpolateGoal:
 
     def test_interpolate_before_baseline(self):
         """Test that years before baseline return baseline value."""
-        goals = projections.load_goals()
+        goals = projections.load_goals(2023)
         ev_goals = goals['ev_adoption']
 
         result = projections.interpolate_goal(ev_goals, 'Year', 'EV Adoption', 2020, 2023, 0.0)
@@ -79,7 +79,7 @@ class TestInterpolateGoal:
 
     def test_interpolate_at_goal_year(self):
         """Test that interpolation at a goal year returns exact value."""
-        goals = projections.load_goals()
+        goals = projections.load_goals(2023)
         ev_goals = goals['ev_adoption']
 
         # 2030 goal is 17%
@@ -88,7 +88,7 @@ class TestInterpolateGoal:
 
     def test_interpolate_between_goals(self):
         """Test linear interpolation between goal years."""
-        goals = projections.load_goals()
+        goals = projections.load_goals(2023)
         ev_goals = goals['ev_adoption']
 
         # 2030: 17%, 2040: 40%
@@ -99,7 +99,7 @@ class TestInterpolateGoal:
 
     def test_interpolate_after_last_goal(self):
         """Test that years after last goal use last goal value."""
-        goals = projections.load_goals()
+        goals = projections.load_goals(2023)
         ev_goals = goals['ev_adoption']
 
         # After 2050 (100%) should still be 100%
@@ -237,7 +237,7 @@ class TestProjectEmissionsForYear:
 
     def test_project_emissions_for_year_structure(self):
         """Test that projection for a year returns complete structure."""
-        goals = projections.load_goals()
+        goals = projections.load_goals(2023)
         baseline_data = {
             'vehicles_tco2e': 12500.0,
             'residential_fossil_fuel_mtco2e': 6500.0,
@@ -247,7 +247,7 @@ class TestProjectEmissionsForYear:
             'electric_mtco2e': 100.0
         }
 
-        result = projections.project_emissions_for_year(baseline_data, 2030, goals, 1.0)
+        result = projections.project_emissions_for_year(baseline_data, 2030, goals, 2023, 1.0)
 
         # Check all expected keys
         expected_keys = ['year', 'vehicles_tco2e', 'residential_fossil_fuel_mtco2e',
@@ -258,7 +258,7 @@ class TestProjectEmissionsForYear:
 
     def test_project_emissions_decreases_over_time(self):
         """Test that emissions decrease from 2030 to 2050."""
-        goals = projections.load_goals()
+        goals = projections.load_goals(2023)
         baseline_data = {
             'vehicles_tco2e': 12500.0,
             'residential_fossil_fuel_mtco2e': 6500.0,
@@ -268,8 +268,8 @@ class TestProjectEmissionsForYear:
             'electric_mtco2e': 100.0
         }
 
-        result_2030 = projections.project_emissions_for_year(baseline_data, 2030, goals, 1.0)
-        result_2050 = projections.project_emissions_for_year(baseline_data, 2050, goals, 1.0)
+        result_2030 = projections.project_emissions_for_year(baseline_data, 2030, goals, 2023, 1.0)
+        result_2050 = projections.project_emissions_for_year(baseline_data, 2050, goals, 2023, 1.0)
 
         # 2050 should have much lower total emissions than 2030
         assert result_2050['total_tco2e'] < result_2030['total_tco2e']
@@ -290,29 +290,26 @@ class TestCreateFullProjection:
         assert isinstance(baseline_data, dict)
         assert isinstance(goals, dict)
 
-    def test_2024_matches_2023_baseline(self):
-        """Test that 2024 projection matches 2023 baseline (continuity test)."""
-        from home_calculations import prepare_home_dashboard_data
+    def test_first_projection_year_matches_baseline(self):
+        """First projection year should equal the baseline year's historical emissions (continuity)."""
+        from home_calculations import prepare_home_dashboard_data, get_baseline_year
 
-        # Get 2023 baseline
-        combined_df, metadata = prepare_home_dashboard_data()
-        baseline_2023 = combined_df[combined_df['year'] == 2023].iloc[0]
+        combined_df, _ = prepare_home_dashboard_data()
+        baseline_year = get_baseline_year(combined_df)
+        baseline_row = combined_df[combined_df['year'] == baseline_year].iloc[0]
 
-        # Get 2024 projection
-        projection_df, baseline_data, goals = projections.create_full_projection(2024, 2024)
-        projection_2024 = projection_df[projection_df['year'] == 2024].iloc[0]
+        first_projection_year = baseline_year + 1
+        projection_df, _, _ = projections.create_full_projection(first_projection_year, first_projection_year)
+        first_projection = projection_df[projection_df['year'] == first_projection_year].iloc[0]
 
-        # Total should match within 1% (allowing for minor grid changes)
-        assert abs(projection_2024['total_tco2e'] - baseline_2023['total_tco2e']) / baseline_2023['total_tco2e'] < 0.01, \
-            f"2024 projection ({projection_2024['total_tco2e']:.0f}) should match 2023 baseline ({baseline_2023['total_tco2e']:.0f})"
+        assert abs(first_projection['total_tco2e'] - baseline_row['total_tco2e']) / baseline_row['total_tco2e'] < 0.01, \
+            f"Projection {first_projection_year} ({first_projection['total_tco2e']:.0f}) should match baseline {baseline_year} ({baseline_row['total_tco2e']:.0f})"
 
         # Vehicles should match exactly (no EV adoption before first goal in 2030)
-        assert abs(projection_2024['vehicles_tco2e'] - baseline_2023['vehicles_tco2e']) < 1.0, \
-            f"2024 vehicles ({projection_2024['vehicles_tco2e']:.0f}) should match 2023 ({baseline_2023['vehicles_tco2e']:.0f})"
+        assert abs(first_projection['vehicles_tco2e'] - baseline_row['vehicles_tco2e']) < 1.0
 
         # Residential fossil should match exactly (no heat pump adoption before first goal in 2030)
-        assert abs(projection_2024['residential_fossil_fuel_mtco2e'] - baseline_2023['residential_fossil_fuel_mtco2e']) < 1.0, \
-            f"2024 res fossil ({projection_2024['residential_fossil_fuel_mtco2e']:.1f}) should match 2023 ({baseline_2023['residential_fossil_fuel_mtco2e']:.1f})"
+        assert abs(first_projection['residential_fossil_fuel_mtco2e'] - baseline_row['residential_fossil_fuel_mtco2e']) < 1.0
 
     def test_create_full_projection_year_range(self):
         """Test that projection includes all years in range."""
