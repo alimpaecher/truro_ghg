@@ -148,10 +148,18 @@ confirm the exact export URL before the next refresh). Overwrite the CSV in
 
 ### Truro Population (`truro-population.csv`)
 
-Annual town population. Automated via the US Census ACS 5-year API
-(see `scripts/refresh_data.py`). For manual updates, search Truro town
-(Barnstable County, MA) on https://data.census.gov — look for table
-`B01003` (Total Population).
+Annual town population. Automated via the UMass Donahue Institute
+Subcounty Estimates workbook (MA State Data Center's republication of
+the US Census Bureau subcounty Population Estimates Program) — see
+`scripts/refresh_data.py`. ACS 5-year estimates are NOT used here:
+they undercount small seasonal Cape Cod towns by ~40% vs the Decennial
+Census / PEP methodology that the historical series follows.
+
+The script probes recent vintages (V{current-year} back ~3 years) of
+`UMDI_Census_V<year>_Subcounty_Estimates.xlsx` until it finds one that's
+published. UMDI typically releases the next vintage in May/June, dated
+July 1 of the prior year. For manual inspection, the index page is
+https://donahue.umass.edu/business-groups/economic-public-policy-research/massachusetts-population-estimates-program/population-estimates-by-massachusetts-geography/by-city-and-town
 
 ### Municipal Utility Bills (`municipal_energy.csv`)
 
@@ -173,7 +181,7 @@ python scripts/refresh_data.py --source population   # one source
 
 The script:
 - Prints a staleness table showing the latest year present in each file.
-- Automates `truro-population.csv` via the US Census ACS API.
+- Automates `truro-population.csv` via the UMass Donahue Institute Subcounty Estimates workbook.
 - Automates `TruroVehicles.csv` + `mass_save.csv` via the
   [zcranmer/ma-ghgi-tool](https://github.com/zcranmer/ma-ghgi-tool) mirror
   (invokes `scripts/fetch_from_ma_ghgi_tool.py`).

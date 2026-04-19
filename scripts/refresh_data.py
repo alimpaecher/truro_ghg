@@ -19,10 +19,8 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import json
 import sys
 import urllib.error
-import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -107,7 +105,7 @@ def report_staleness() -> None:
         ("clc_participation.csv", csv_latest_year(DATA_DIR / "clc_participation.csv", "Year"), "manual"),
         ("clc_heat_pump_installation.csv", csv_latest_year(DATA_DIR / "clc_heat_pump_installation.csv", "Year"), "ma-ghgi-tool (auto)"),
         ("masssaveenergyusage/ (legacy)", mass_save_latest_year(), "superseded by mass_save.csv"),
-        ("truro-population.csv", csv_latest_year(DATA_DIR / "truro-population.csv", "Year"), "Census API (auto)"),
+        ("truro-population.csv", csv_latest_year(DATA_DIR / "truro-population.csv", "Year"), "UMDI (auto)"),
         ("solar_data.csv", csv_latest_year(DATA_DIR / "solar_data.csv", "Year"), "manual"),
     ]
     print(f"\n=== Data file staleness (current year: {current_year}) ===\n")
@@ -122,41 +120,78 @@ def report_staleness() -> None:
 # --- Automated fetchers -----------------------------------------------------
 
 
-def fetch_census_population(start_year: int = 2019) -> pd.DataFrame:
-    """
-    Fetch Truro town population from the US Census ACS 5-year API.
+UMDI_URL_TEMPLATE = (
+    "https://donahue.umass.edu/documents/"
+    "UMDI_Census_V{vintage}_Subcounty_Estimates.xlsx"
+)
 
-    Truro is "County Subdivision" 71725 in Barnstable County (001),
-    Massachusetts (state 25). Verify these codes if the API returns no rows.
+
+def fetch_umdi_population(municipality: str = "Truro") -> pd.DataFrame:
     """
-    STATE = "25"
-    COUNTY = "001"
-    COUSUB = "71725"
+    Fetch annual town population from the UMass Donahue Institute V{year}
+    Subcounty Estimates workbook (MA State Data Center's republication of
+    the US Census Bureau subcounty Population Estimates Program).
+
+    This is the methodology that matches the existing historical series in
+    truro-population.csv — the Census ACS 5-year estimate undercounts small
+    seasonal Cape Cod towns by ~40% and is NOT an acceptable substitute.
+
+    The filename embeds a "vintage" year (e.g. V2024). We probe the current
+    year back ~3 years until we find one that exists; UMDI typically
+    publishes the next vintage in May/June.
+    """
     current = dt.date.today().year
-
-    records = []
-    for year in range(start_year, current + 1):
-        params = {
-            "get": "NAME,B01003_001E",
-            "for": f"county subdivision:{COUSUB}",
-            "in": f"state:{STATE} county:{COUNTY}",
-        }
-        url = f"https://api.census.gov/data/{year}/acs/acs5?" + urllib.parse.urlencode(params)
+    xlsx_bytes = None
+    used_vintage = None
+    for vintage in range(current, current - 4, -1):
+        url = UMDI_URL_TEMPLATE.format(vintage=vintage)
         try:
-            with urllib.request.urlopen(url, timeout=15) as resp:
-                data = json.loads(resp.read().decode())
+            with urllib.request.urlopen(url, timeout=30) as resp:
+                xlsx_bytes = resp.read()
+                used_vintage = vintage
+                break
         except urllib.error.HTTPError as e:
-            # ACS 5-year estimates are published ~1 year in arrears
             if e.code == 404:
                 continue
             raise
-        except urllib.error.URLError:
-            continue
+    if xlsx_bytes is None:
+        raise RuntimeError(
+            "No UMDI subcounty estimates workbook found for recent vintages. "
+            f"Check {UMDI_URL_TEMPLATE.format(vintage=current)} by hand."
+        )
 
-        header, *rows = data
-        pop_idx = header.index("B01003_001E")
-        if rows:
-            records.append({"Year": year, "Population": int(rows[0][pop_idx])})
+    import io
+    raw = pd.read_excel(io.BytesIO(xlsx_bytes),
+                        sheet_name="Appendix Annual MCD Estimates",
+                        header=None)
+
+    # Row 2 (0-indexed) holds the per-column headers: municipality, county,
+    # the two decennial-census columns, the two estimates-base columns,
+    # and the annual-estimate years (ints like 2011, 2012, ...). Any column
+    # past the last year header (change / rank / percent-change columns)
+    # has a non-year label and should be skipped.
+    header_row = raw.iloc[2]
+    year_cols = {}
+    for col_idx, label in header_row.items():
+        if isinstance(label, (int, float)) and not pd.isna(label):
+            year = int(label)
+            if 2000 <= year <= 2100:
+                year_cols[year] = col_idx
+
+    data = raw.iloc[3:]
+    row = data[data[0].astype(str).str.strip().str.casefold() == municipality.casefold()]
+    if row.empty:
+        raise RuntimeError(f"{municipality} not found in UMDI V{used_vintage} workbook.")
+    row = row.iloc[0]
+
+    records = []
+    for year, col_idx in sorted(year_cols.items()):
+        val = row[col_idx]
+        if pd.notna(val):
+            try:
+                records.append({"Year": year, "Population": int(val)})
+            except (ValueError, TypeError):
+                continue
     return pd.DataFrame(records)
 
 
@@ -171,15 +206,17 @@ def update_population_csv() -> None:
     known_years = set(existing["Year"].dropna().astype(int))
 
     try:
-        fetched = fetch_census_population(start_year=min(known_years) if known_years else 2019)
+        fetched = fetch_umdi_population()
     except Exception as exc:
-        print(f"  Census API fetch failed: {exc}")
-        print("  Falling back to manual update. Census ACS endpoint:")
-        print("    https://data.census.gov/ (search for Truro town, Barnstable County, MA)")
+        print(f"  UMDI fetch failed: {exc}")
+        print("  Falling back to manual update. UMDI publishes the workbook at:")
+        print("    https://donahue.umass.edu/business-groups/economic-public-policy-research"
+              "/massachusetts-population-estimates-program/population-estimates-by-massachusetts"
+              "-geography/by-city-and-town")
         return
 
     if fetched.empty:
-        print("  Census API returned no rows. Verify county-subdivision code (Truro = 71725).")
+        print("  UMDI workbook had no Truro rows — layout may have changed; inspect by hand.")
         return
 
     new_rows = fetched[~fetched["Year"].isin(known_years)]
@@ -191,8 +228,6 @@ def update_population_csv() -> None:
     existing["Population"] = existing["Population"].astype(str)
     new_rows = new_rows.copy()
     new_rows["Population"] = new_rows["Population"].map(lambda n: f"{n:,}")
-    new_rows["Year on Year Change"] = ""
-    new_rows["Change in Percent"] = ""
 
     merged = pd.concat([existing, new_rows[existing.columns]], ignore_index=True)
     merged.to_csv(target, index=False)

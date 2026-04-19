@@ -181,6 +181,10 @@ def get_baseline_year(combined_df):
         'commercial_electric_mtco2e',
     ]
     has_all = (combined_df[key_cols] > 0).all(axis=1)
+    # Population is required for per-capita metrics; treat years missing
+    # population as not-yet-fully-populated even if emissions have landed.
+    if 'Population' in combined_df.columns:
+        has_all &= combined_df['Population'].notna()
     years_with_data = combined_df[has_all]['year']
     if len(years_with_data) > 0:
         return int(years_with_data.max())
