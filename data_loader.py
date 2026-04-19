@@ -155,35 +155,32 @@ def load_assessors_data():
 
 @st.cache_data(ttl=600)
 def load_mass_save_data():
-    """Load Mass Save Geographic Report data for Truro."""
-    try:
-        import glob
+    """Load Mass Save IOU electricity data for Truro.
 
-        # Find all Mass Save files
+    Prefers `data/mass_save.csv` (produced by `scripts/fetch_from_ma_ghgi_tool.py`,
+    which pulls from the zcranmer/ma-ghgi-tool mirror of Mass Save's Geographic
+    Savings Report). Falls back to the per-year `.xls` files in
+    `data/masssaveenergyusage/` if the CSV is absent.
+    """
+    try:
+        csv_path = 'data/mass_save.csv'
+        import os
+        if os.path.exists(csv_path):
+            return pd.read_csv(csv_path)
+
+        import glob
         files = glob.glob('data/masssaveenergyusage/*.xls')
 
         all_data = []
         for filename in files:
-            # Extract year from filename
             year = int(filename.split('/')[-1].split(' ')[0])
-
-            # Read the file
             df = pd.read_excel(filename, skiprows=1)
-
-            # Filter for Truro
             truro_data = df[(df['Town'] == 'Truro') & (df['County'] == 'Barnstable')]
-
-            # Add year column
             truro_data['Year'] = year
-
             all_data.append(truro_data)
 
-        # Combine all years
         combined_df = pd.concat(all_data, ignore_index=True)
-
-        # Clean the electric usage column (remove commas, convert to float)
         combined_df['Electric_MWh'] = combined_df['Annual  Electric  Usage (MWh)'].str.replace(',', '').astype(float)
-
         return combined_df
 
     except Exception as e:

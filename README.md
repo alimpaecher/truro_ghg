@@ -139,3 +139,54 @@ Save all downloaded CSV files to the `data/` folder before running the dashboard
 - `TRURO_Assessors original_2020-12-17-2019.xls`: Property data including HVAC systems, fuel types, and square footage
 - Used to estimate residential and commercial heating emissions
 
+### Solar Installations (`solar_data.csv`)
+
+Tracks rooftop / installed solar capacity in Truro. Source is the Massachusetts
+solar installation database (currently MassCEC Production Tracking System —
+confirm the exact export URL before the next refresh). Overwrite the CSV in
+`data/` once you have the latest year.
+
+### Truro Population (`truro-population.csv`)
+
+Annual town population. Automated via the US Census ACS 5-year API
+(see `scripts/refresh_data.py`). For manual updates, search Truro town
+(Barnstable County, MA) on https://data.census.gov — look for table
+`B01003` (Total Population).
+
+### Municipal Utility Bills (`municipal_energy.csv`)
+
+Internal data sourced from the town's utility accounting system. Not public —
+this file is refreshed manually by exporting the latest fiscal year from the
+municipal accounting records. Preserve the existing columns
+(`fiscal_year`, `account_fuel`, `mtco2e`, …).
+
+## Annual Data Refresh
+
+Run the refresh utility once a year (or whenever new data becomes available):
+
+```bash
+source myenv/bin/activate
+python scripts/refresh_data.py                       # report + attempt automated fetches
+python scripts/refresh_data.py --report              # staleness report only
+python scripts/refresh_data.py --source population   # one source
+```
+
+The script:
+- Prints a staleness table showing the latest year present in each file.
+- Automates `truro-population.csv` via the US Census ACS API.
+- Automates `TruroVehicles.csv` + `mass_save.csv` via the
+  [zcranmer/ma-ghgi-tool](https://github.com/zcranmer/ma-ghgi-tool) mirror
+  (invokes `scripts/fetch_from_ma_ghgi_tool.py`).
+- Prints manual step-by-step instructions for the remaining sources (CLC,
+  municipal utility bills, solar).
+
+After refreshing, verify:
+
+```bash
+streamlit run Home.py    # dashboard renders new year without blanks
+pytest                   # regression tests still pass
+```
+
+The projection baseline year is derived dynamically from the data, so no code
+changes are needed when a new year of historical data becomes available.
+

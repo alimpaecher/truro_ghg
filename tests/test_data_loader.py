@@ -121,10 +121,12 @@ class TestLoadMassSaveData:
         assert 'Electric_MWh' in result.columns
         assert 'Year' in result.columns
 
-    def test_mass_save_truro_only(self):
-        """Test that all data is for Truro."""
+    def test_mass_save_has_sector_column(self):
+        """Data is pre-filtered to Truro upstream; Sector splits res/commercial."""
         result = data_loader.load_mass_save_data()
-        assert (result['Town'] == 'Truro').all(), "Non-Truro data found"
+        assert 'Sector' in result.columns
+        expected_sectors = {'Residential & Low-Income', 'Commercial & Industrial'}
+        assert expected_sectors.issubset(set(result['Sector'].unique()))
 
 
 class TestLoadCLCHeatPumpData:

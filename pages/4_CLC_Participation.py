@@ -12,10 +12,26 @@ with st.expander("ℹ️ Data Collection Notes"):
 
     Navigate to: **Residential: Electric and Gas Executive Summaries**
 
-    **Data Collection Instructions:**
-    - **CLC Participation Data:** Click on "Municipality" tab
-    - **Census Statistics:** Click on "Census Statistics" tab (currently 2023 data)
-    - **Heat Pump Installation:** Navigate to "Electrification and Heating" → "By Municipality"
+    **CLC Participation Data (`clc_participation.csv`)** — assembled in two passes:
+
+    *Pass A — historical participation rate:*
+    1. Click the **Municipality** tab.
+    2. Click **Open Filter Pane**.
+    3. Filter **Municipality** → `Truro`.
+    4. Filter **Year** → select **all years**.
+    5. Export → use for the `Cumulative Location Participation Rate %` column.
+
+    *Pass B — current-year-only columns:*
+    1. Keep the Municipality tab + Truro filter.
+    2. Re-filter **Year** → **just the current year**.
+    3. Export → copy `Active Locations`, `Average Participation Rate %`, `Repeat Participation %`.
+
+    Append one new row per year to `data/clc_participation.csv`.
+
+    **Census Statistics (`clc_census.csv`)** — Click the "Census Statistics" tab and export.
+
+    **Heat Pump Installation (`clc_heat_pump_installation.csv`)** — Navigate to
+    "Electrification and Heating" → "By Municipality" and export.
 
     All data is downloaded as CSV files and stored in the `data/` folder.
     """)
