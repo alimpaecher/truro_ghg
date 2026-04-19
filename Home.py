@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from home_calculations import prepare_home_dashboard_data
+from home_calculations import prepare_home_dashboard_data, get_baseline_year
 from data_loader import calculate_total_fossil_fuel_heating
 
 # Page configuration
@@ -21,7 +21,20 @@ try:
     fossil_fuel_data_tuple = calculate_total_fossil_fuel_heating()
     fossil_fuel_results, fossil_fuel_metadata = fossil_fuel_data_tuple
 
+    # Trim to the most recent fully-populated year so partial / in-progress
+    # years (e.g. where only vehicle or municipal energy data has landed)
+    # don't appear as artificially low bars.
+    baseline_year = get_baseline_year(combined_df)
+    latest_raw_year = int(combined_df['year'].max())
+    combined_df = combined_df[combined_df['year'] <= baseline_year].copy()
+
     st.success("Successfully loaded data from all sources")
+    if latest_raw_year > baseline_year:
+        st.info(
+            f"Showing data through {baseline_year}. "
+            f"Partial year(s) {baseline_year + 1}–{latest_raw_year} hidden "
+            f"until all emission categories are reported."
+        )
 
     # Display current year metrics
     most_recent_year = combined_df['year'].max()
