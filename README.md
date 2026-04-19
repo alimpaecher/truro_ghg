@@ -47,13 +47,39 @@ streamlit run Home.py
 
 All data files are stored in the `data/` folder as CSV files.
 
-### Municipal Energy & Vehicles
-- `municipal_energy.csv`: Municipal building energy consumption data
-- `TruroVehicles.csv`: Vehicle census data by quarter and type
-  - Source: [MassDOT Vehicle Census](https://geodot-massdot.hub.arcgis.com/pages/vehicle-census)
-  - Contains registered vehicle counts by municipality
+### Vehicles (`TruroVehicles.csv`)
+
+Quarterly vehicle registrations by type.
+
+- **Original source:** [MassDOT Vehicle Census](https://geodot-massdot.hub.arcgis.com/pages/vehicle-census) (registered vehicle counts by municipality, published quarterly).
+- **How we pull it:** via the community-maintained mirror
+  [zcranmer/ma-ghgi-tool](https://github.com/zcranmer/ma-ghgi-tool/blob/main/datasets/municipal_emissions.csv),
+  which aggregates MassDOT + Mass Save data for every MA town into a single
+  CSV. `scripts/fetch_from_ma_ghgi_tool.py` downloads that CSV, extracts
+  Truro rows, and reshapes them into `TruroVehicles.csv` format.
+- **If the mirror goes stale:** fall back to downloading directly from the
+  MassDOT Vehicle Census link above and appending rows to `TruroVehicles.csv`
+  with columns `Quarter, Type, Number`.
+
+### Supporting factors (static)
 - `vehicles_factors.csv`: Vehicle emission calculation factors (MPG, miles/year, etc.)
 - `emission_factors.csv`: Emission factors for various fuel types
+
+### Mass Save IOU Electricity (`mass_save.csv`)
+
+Residential and commercial IOU electricity usage (MWh) by year.
+
+- **Original source:** [Mass Save Geographic Savings Report](https://www.masssavedata.com/Public/GeographicSavings).
+- **How we pull it:** via the same [zcranmer/ma-ghgi-tool mirror](https://github.com/zcranmer/ma-ghgi-tool)
+  (same `scripts/fetch_from_ma_ghgi_tool.py` invocation). The mirror
+  consolidates Mass Save's per-year exports into one table.
+- **Legacy files** in `data/masssaveenergyusage/*.xls` are still read by
+  `load_mass_save_data()` as a fallback if `data/mass_save.csv` is absent,
+  but new refreshes should go through the fetch script.
+- **If the mirror goes stale:** download each missing year's Geographic Report
+  from Mass Save (save as `YYYY Geographic Report - Exported on MM-DD-YYYY.xls`
+  into `data/masssaveenergyusage/`), then delete `data/mass_save.csv` so the
+  loader falls back to reading the `.xls` files.
 
 ### Cape Light Compact (CLC) Data
 
