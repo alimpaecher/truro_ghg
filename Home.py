@@ -26,15 +26,39 @@ try:
     # don't appear as artificially low bars.
     baseline_year = get_baseline_year(combined_df)
     latest_raw_year = int(combined_df['year'].max())
+
+    # Map internal column names → human labels for the "missing" callout.
+    # Keep this aligned with get_baseline_year's completeness check.
+    CATEGORY_LABELS = {
+        'vehicles_tco2e': 'Vehicles',
+        'municipal_buildings_mtco2e': 'Municipal buildings',
+        'residential_fossil_fuel_mtco2e': 'Residential fossil fuel heating',
+        'residential_electric_mtco2e': 'Residential electricity',
+        'commercial_electric_mtco2e': 'Commercial electricity',
+    }
+
+    def _missing_categories(row):
+        missing = [label for col, label in CATEGORY_LABELS.items() if row[col] == 0]
+        if 'Population' in combined_df.columns and pd.isna(row.get('Population')):
+            missing.append('Population')
+        return missing
+
+    partial_years_detail = []
+    for _, row in combined_df[combined_df['year'] > baseline_year].iterrows():
+        missing = _missing_categories(row)
+        partial_years_detail.append((int(row['year']), missing))
+
     combined_df = combined_df[combined_df['year'] <= baseline_year].copy()
 
     st.success("Successfully loaded data from all sources")
-    if latest_raw_year > baseline_year:
-        st.info(
-            f"Showing data through {baseline_year}. "
-            f"Partial year(s) {baseline_year + 1}–{latest_raw_year} hidden "
-            f"until all emission categories are reported."
-        )
+    if partial_years_detail:
+        lines = [f"Showing data through **{baseline_year}**. The following partial year(s) are hidden until all data is reported:"]
+        for year, missing in partial_years_detail:
+            if missing:
+                lines.append(f"- **{year}**: missing {', '.join(missing)}")
+            else:
+                lines.append(f"- **{year}**: hidden")
+        st.info("\n".join(lines))
 
     # Display current year metrics
     most_recent_year = combined_df['year'].max()
