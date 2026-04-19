@@ -64,8 +64,34 @@ Navigate to: **Residential: Electric and Gas Executive Summaries**
 **To download the data:**
 
 1. **CLC Participation Data** (`clc_participation.csv`):
-   - Click on "Municipality" tab
-   - Export participation rate data by year
+
+   This file is assembled in **two passes** because the Qlik dashboard only
+   exposes the historical time series and the current-year detail columns via
+   separate filter selections.
+
+   **Pass A — historical participation rate (one row per year):**
+   1. Click the **Municipality** tab.
+   2. Click **Open Filter Pane**.
+   3. Filter **Municipality** → `Truro`.
+   4. Filter **Year** → select **all years**.
+   5. Export. Use this for the `Cumulative Location Participation Rate %` column
+      (one value per year).
+
+   **Pass B — current-year-only columns:**
+   1. Keep the Municipality tab + Truro filter.
+   2. Re-filter **Year** → **just the current year**.
+   3. Export. From this row, copy:
+      - `Active Locations`
+      - `Average Participation Rate %`
+      - `Repeat Participation %`
+
+   **Assemble:** Append one new row to `data/clc_participation.csv` with:
+   ```
+   Year,Active Locations,Cumulative Location Participation Rate %,Average Participation Rate %,Repeat Participation %
+   ```
+   The loader at [data_loader.py](data_loader.py) only strips `%` from the
+   cumulative column; the other two percentage columns are kept as strings and
+   can be rendered as-is.
 
 2. **Census Statistics** (`clc_census.csv`):
    - Click on "Census Statistics" tab
