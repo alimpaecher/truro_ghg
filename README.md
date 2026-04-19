@@ -125,20 +125,15 @@ Navigate to: **Residential: Electric and Gas Executive Summaries**
    - Includes housing tenure, vacancy status, heating fuel types, etc.
 
 3. **Heat Pump Installation** (`clc_heat_pump_installation.csv`):
-   - Navigate to "Electrification and Heating" → "By Municipality"
-   - Export heat pump installation data by year
+   - **Auto-fetched** — `scripts/fetch_from_ma_ghgi_tool.py` pulls the
+     "Cumulative heat pumps all (accounts/locations)" columns from the
+     [zcranmer/ma-ghgi-tool](https://github.com/zcranmer/ma-ghgi-tool) mirror
+     (numbers match the CLC export exactly for 2021–2023; 2024+ tracked).
+   - **This is the file that gates baseline-year advancement** for projections.
+   - **Manual fallback** — if the mirror goes stale: in the CLC viewer,
+     navigate to "Electrification and Heating" → "By Municipality" and export.
 
 Save all downloaded CSV files to the `data/` folder before running the dashboard.
-
-### Residential & Commercial Energy Data
-
-**Assessors Data Source:** Truro Assessors Database (property characteristics, HVAC types, fuel types, square footage)
-
-**Additional Energy Usage Data:**
-- [Mass Save Data - Geographic Savings by Town](https://www.masssavedata.com/Public/GeographicSavings)
-- This website provides actual energy consumption data by municipality in Massachusetts
-- Can be used to validate or refine the heating consumption benchmarks used in emissions calculations
-- Includes electricity and natural gas usage (note: Truro has no natural gas service)
 
 ### Assessors Database
 - `TRURO_Assessors original_2020-12-17-2019.xls`: Property data including HVAC systems, fuel types, and square footage
